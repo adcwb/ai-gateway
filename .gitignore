@@ -21,3 +21,6 @@ backend/internal/console/dist/*
 
 # local databases
 *.db
+
+# TypeScript incremental build info
+*.tsbuildinfo
