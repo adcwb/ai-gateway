@@ -10,11 +10,16 @@
 
 - **虚拟 Key 管理** —— 发放 `sk-vk-*` 凭证（AES-256-GCM 加密存储、SHA-256 查找）；轮换上游 Key 无需改动客户端
 - **多供应商路由** —— 加权负载均衡、跨提供方自动重试/故障转移、多实例共享的 Redis 熔断器（[设计](docs/zh-CN/design/01-routing-and-lb.md)）
+- **协议适配** —— OpenAI 兼容客户端可原生调用 Anthropic（完整请求/响应/SSE 翻译）与 Azure OpenAI，用量统一归一化（[设计](docs/zh-CN/design/02-protocol-adapters.md)）
+- **多租户** —— 租户→项目→Key 层级，零配置默认租户；按租户/项目/Key/模型的成本归属（[设计](docs/zh-CN/design/04-multi-tenancy-and-auth.md)）
+- **余额计费** —— 按租户可选启用的预付/后付账户、复式流水、代理路径冻结→结算扣减、宽限期停用、预算告警、与上游成本解耦的售价价格表（[设计](docs/zh-CN/design/03-billing-and-monetization.md)）
 - **多维配额** —— 日/小时 Token、请求数、并发槽、积分预算；按模型覆盖；Redis Lua 原子执行
-- **Token 统计与成本** —— 从每个响应解析用量（含流式与缓存 Token），按模型计价并折算积分
+- **Token 统计与报表** —— 从每个响应解析用量（含流式与缓存 Token），按模型计价，按日聚合支撑看板与分摊
+- **PII 护栏** —— 规则式检测引擎（身份证含校验位、手机号、银行卡 Luhn、邮箱、API 密钥）+ 提示注入签名；按策略 block / redact / log（[设计](docs/zh-CN/design/06-security-and-guardrails.md)）
+- **响应缓存** —— 归一化键的精确缓存、合成流式回放、可配置命中计费（free/discount/full）（[设计](docs/zh-CN/design/07-caching-strategies.md)）
 - **审计日志** —— 每个请求全记录（Token、延迟、PII 动作、客户端元数据），异步批量落库，可选 Elasticsearch 索引，会话聚合
 - **可观测性** —— 独立端口的 Prometheus `/metrics`、`/healthz` + `/readyz` 探针、仓库自带 Grafana 看板（[设计](docs/zh-CN/design/05-observability.md)）
-- **Web 控制台** —— 内嵌于二进制的 React SPA（`/console/`）：仪表盘、Key、提供方（实时熔断状态）、审计；源码独立维护于 [`frontend/`](frontend/)
+- **Web 控制台** —— 内嵌于二进制的 React SPA（`/console/`）：仪表盘（含用量）、Key、提供方（实时熔断）、审计、租户、计费；源码维护于 [`frontend/`](frontend/)
 - **管理面认证** —— 静态管理令牌（`AIGW_ADMIN_TOKEN`）保护全部 `/ai/gateway/*` 端点
 - **多数据库** —— MySQL（默认）、PostgreSQL、SQLite（演示）；另有会话亲和、模型映射、IP 白名单、L1/L2 Key 缓存
 
@@ -92,8 +97,14 @@ curl localhost:8080/ai/v1/chat/completions \
 
 ## API 面
 
-- **代理**（`Authorization: Bearer sk-vk-*`）：`GET /ai/v1/models`、`POST /ai/v1/chat/completions`、`POST /ai/v1/embeddings`、`POST /ai/v1/rerank`，其余 `/ai/v1/*` 透传。OpenAI 兼容，长期承诺不做破坏性变更。
-- **管理**（`Authorization: Bearer <管理令牌>`）：虚拟 Key CRUD 与明文取回、配额配置/用量、审计列表/会话/安全总览、提供方 CRUD 与 `GET /ai/gateway/providers/health`（实时熔断状态）。
+- **代理**（`Authorization: Bearer sk-vk-*`）：`GET /ai/v1/models`、`POST /ai/v1/chat/completions`、`POST /ai/v1/embeddings`、`POST /ai/v1/rerank`，其余 `/ai/v1/*` 透传。OpenAI 兼容，长期承诺不做破坏性变更。`providerType: anthropic` / `azure_openai` 的提供方透明翻译。
+- **管理**（`Authorization: Bearer <管理令牌>`）：
+  - Key：CRUD 与明文取回、配额配置/用量
+  - 提供方：CRUD 与 `GET /ai/gateway/providers/health`（实时熔断状态）
+  - 租户：`POST|GET /ai/gateway/tenants`、`POST|GET /ai/gateway/projects`
+  - 计费：`POST /ai/gateway/billing/recharge`、`PUT /ai/gateway/billing/account`、`GET /ai/gateway/billing/ledger`
+  - 报表：`GET /ai/gateway/stats/overview`、`GET /ai/gateway/stats/timeseries`
+  - 审计：列表 / 会话 / 安全总览
 - **运维**（免认证）：`GET /healthz`、`GET /readyz`；指标端口上的 `GET /metrics`。
 
 ## 状态与路线图
@@ -104,7 +115,22 @@ curl localhost:8080/ai/v1/chat/completions \
 - **P1 商业闭环（核心）**：租户→项目→Key 层级、可选启用的预付/后付余额账户（复式流水 + 冻结→结算扣减）、宽限期停用、预算告警、售价价格表、按日用量归集与报表、规则式 PII 引擎（block/redact/log）。
 - **P2 差异化（核心）**：Anthropic 原生出口适配（含 SSE 流式翻译）与 Azure OpenAI 适配及用量归一化、精确响应缓存与缓存感知计费。
 
-已完成设计、留待后续实现（见[设计套件](docs/zh-CN/README.md)）：用户/RBAC 与 OIDC、支付网关/订阅/发票、Anthropic Messages 入口、Gemini/Bedrock 适配、语义缓存、外部 PII 引擎、OpenTelemetry 追踪。欢迎贡献。
+### 尚未实现（均已有完整设计，见[设计套件](docs/zh-CN/README.md)）
+
+| 领域 | 缺失部分 |
+| --- | --- |
+| 访问控制（[D04](docs/zh-CN/design/04-multi-tenancy-and-auth.md)） | 用户体系 + RBAC（当前唯一主体是管理令牌）、OIDC/SSO、管理查询的租户级隔离 |
+| 路由（[D01](docs/zh-CN/design/01-routing-and-lb.md)） | `least_latency` / `least_cost` 策略、按 Key 选择策略、映射级降级链、主动健康探测、逐次尝试审计 |
+| 计费商业化（[D03](docs/zh-CN/design/03-billing-and-monetization.md)） | 支付网关（Stripe/支付宝/微信）、订阅套餐、发票、webhook/邮件告警通道、项目配额模板继承 |
+| 协议（[D02](docs/zh-CN/design/02-protocol-adapters.md)） | Anthropic Messages 与 Responses API 入口、Gemini / Bedrock 出口适配、Batch 与 Files API 代理 |
+| 安全（[D06](docs/zh-CN/design/06-security-and-guardrails.md)） | 可插拔护栏 checker 链、外部 PII 引擎（gRPC/Presidio）、出向流扫描、审计正文加密、`rekey` CLI |
+| 缓存（[D07](docs/zh-CN/design/07-caching-strategies.md)） | 语义缓存（向量后端）、流式响应缓存、缓存清空 API |
+| 可观测性（[D05](docs/zh-CN/design/05-observability.md)） | OpenTelemetry 追踪 |
+| 控制台（[D08](docs/zh-CN/design/08-web-console.md)） | Key 创建/编辑/取回 UI、提供方表单、模型与价格表页面、审计正文/会话视图、系统设置、用量图表、Playwright E2E |
+| 工程化（[D10](docs/zh-CN/design/10-deployment-and-ops.md)） | OpenAPI 规范、CI 覆盖率门槛与 PostgreSQL 矩阵、Helm chart、`doctor` CLI、提供方模型同步 |
+| 面向未来（[D09](docs/zh-CN/design/09-extensibility.md)） | 插件/Hook 机制、事件总线、MCP 网关 |
+
+欢迎贡献——每一行背后都有完整的技术设计。
 
 ## 开发
 
