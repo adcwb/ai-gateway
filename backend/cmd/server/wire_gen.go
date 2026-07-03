@@ -41,9 +41,10 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	auditWorker := biz.NewAuditWorker(db, rdb, nil, logger)
 	quotaManager := biz.NewQuotaManager(rdb, db, logger)
 	routerManager := biz.NewRouterManager(rdb, db, metrics, logger)
-	gatewayUseCase := biz.NewGatewayUseCase(db, rdb, quotaManager, auditWorker, routerManager, metrics, bc.AI, bc.System, logger)
+	billingManager := biz.NewBillingManager(db, rdb, metrics, logger)
+	gatewayUseCase := biz.NewGatewayUseCase(db, rdb, quotaManager, auditWorker, routerManager, billingManager, metrics, bc.AI, bc.System, logger)
 
-	gatewayService := service.NewGatewayService(gatewayUseCase)
+	gatewayService := service.NewGatewayService(gatewayUseCase, billingManager)
 
 	readyChecker := server.NewReadyChecker(db, rdb)
 	httpSrv := server.NewHTTPServer(bc.Server, bc.System, gatewayService, gatewayUseCase, quotaManager, readyChecker, logger)

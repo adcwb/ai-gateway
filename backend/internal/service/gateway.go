@@ -15,10 +15,11 @@ import (
 // GatewayService wraps GatewayUseCase and provides HTTP handler methods.
 type GatewayService struct {
 	uc *biz.GatewayUseCase
+	bm *biz.BillingManager
 }
 
-func NewGatewayService(uc *biz.GatewayUseCase) *GatewayService {
-	return &GatewayService{uc: uc}
+func NewGatewayService(uc *biz.GatewayUseCase, bm *biz.BillingManager) *GatewayService {
+	return &GatewayService{uc: uc, bm: bm}
 }
 
 // =============================================================================

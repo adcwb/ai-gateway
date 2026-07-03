@@ -28,6 +28,9 @@ type Metrics struct {
 	BreakerState       *prometheus.GaugeVec   // provider → 0 closed / 1 half-open / 2 open
 	TokensTotal        *prometheus.CounterVec // provider, model, token_class
 	QuotaRejections    *prometheus.CounterVec // dimension
+	BillingRejections  *prometheus.CounterVec // reason: suspended / insufficient_balance / budget_alert
+	CacheRequests      *prometheus.CounterVec // cache_type, outcome: hit / miss / bypass
+	GuardrailActions   *prometheus.CounterVec // detector, action
 	KeyCacheHits       *prometheus.CounterVec // level: l1 / l2 / db
 	AuditQueueDepth    prometheus.Gauge
 	ConcurrencySlots   prometheus.Gauge
@@ -69,6 +72,18 @@ func NewMetrics() *Metrics {
 			Name: "aigw_quota_rejections_total",
 			Help: "Requests rejected by quota dimension.",
 		}, []string{"dimension"}),
+		BillingRejections: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "aigw_billing_rejections_total",
+			Help: "Billing gate outcomes (suspended / insufficient_balance / budget_alert).",
+		}, []string{"reason"}),
+		CacheRequests: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "aigw_cache_requests_total",
+			Help: "Response-cache lookups by type and outcome.",
+		}, []string{"cache_type", "outcome"}),
+		GuardrailActions: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "aigw_guardrail_actions_total",
+			Help: "Guardrail/PII detector findings by action.",
+		}, []string{"detector", "action"}),
 		KeyCacheHits: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "aigw_key_cache_hits_total",
 			Help: "Virtual-key resolution by cache level (l1 / l2 / db).",

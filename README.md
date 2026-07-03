@@ -98,7 +98,13 @@ Tables are created automatically on startup (additive GORM auto-migration).
 
 ## Status & roadmap
 
-Current release implements the **P0 "open-source ready"** milestone of the [roadmap](docs/03-roadmap.md): weighted LB + failover + circuit breaking, metrics/probes, admin auth, encrypted provider keys, multi-DB, tests + CI, compose stack, console MVP. P1 (multi-tenancy, balance-based billing, budget alerts) and P2 (native Anthropic/Gemini protocol adapters, semantic cache, guardrails, payments) are specified in the [design suite](docs/README.md) — contributions welcome.
+Implemented against the [roadmap](docs/03-roadmap.md):
+
+- **P0 — open-source ready**: weighted LB + failover + circuit breaking, metrics/probes, admin auth, encrypted provider keys, multi-DB, tests + CI, compose stack, console MVP.
+- **P1 — commercial loop (core)**: tenant→project→key hierarchy, opt-in prepaid/postpaid balance accounts with double-entry ledger and freeze→settle deduction, grace-period suspension, budget alerts, sell-side price tables, daily usage attribution + reports, rule-based PII engine (block/redact/log).
+- **P2 — differentiation (core)**: native Anthropic outbound adapter (incl. SSE stream translation) and Azure OpenAI adapter with normalized usage, exact-match response cache with cache-aware billing.
+
+Designed and tracked for later (see [design suite](docs/README.md)): users/RBAC + OIDC, payment gateways/subscriptions/invoices, inbound Anthropic Messages endpoint, Gemini/Bedrock adapters, semantic cache, external PII engines, OpenTelemetry tracing. Contributions welcome.
 
 ## Development
 

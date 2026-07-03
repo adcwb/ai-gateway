@@ -29,7 +29,20 @@ type AIProvider struct {
 	Priority     int            `gorm:"default:0" json:"priority"` // lower = preferred tier for fallback ordering
 	Description  string         `gorm:"type:varchar(256)" json:"description"`
 	LastSyncedAt *time.Time     `gorm:"index" json:"lastSyncedAt"`
+
+	// AdapterConfig carries dialect-specific settings
+	// (docs/design/02-protocol-adapters.md), e.g.
+	//   anthropic:    {"anthropicVersion": "2023-06-01"}
+	//   azure_openai: {"apiVersion": "2024-06-01"}
+	AdapterConfig datatypes.JSON `gorm:"column:adapter_config;type:json" json:"adapterConfig"`
 }
+
+// Provider dialect identifiers handled by the protocol adapter layer.
+const (
+	ProviderTypeOpenAICompatible = "openai_compatible"
+	ProviderTypeAnthropic        = "anthropic"
+	ProviderTypeAzureOpenAI      = "azure_openai"
+)
 
 func (AIProvider) TableName() string { return "ai_providers" }
 

@@ -1,21 +1,24 @@
 import { useEffect, useState } from "react";
-import { api, type KeyStats, type ProviderHealth } from "../api/client";
+import { api, type KeyStats, type ProviderHealth, type UsageOverview } from "../api/client";
 import { t, type Lang } from "../i18n";
 
 export default function Dashboard({ lang }: { lang: Lang }) {
   const [stats, setStats] = useState<KeyStats | null>(null);
   const [health, setHealth] = useState<ProviderHealth[]>([]);
+  const [usage, setUsage] = useState<UsageOverview | null>(null);
   const [error, setError] = useState("");
 
   const load = async () => {
     setError("");
     try {
-      const [s, h] = await Promise.all([
+      const [s, h, u] = await Promise.all([
         api.get<KeyStats>("/ai/gateway/key/stats"),
         api.get<ProviderHealth[]>("/ai/gateway/providers/health"),
+        api.get<UsageOverview>("/ai/gateway/stats/overview?days=7"),
       ]);
       setStats(s);
       setHealth(h ?? []);
+      setUsage(u);
     } catch (e) {
       setError(`${t("loadFailed", lang)}: ${(e as Error).message}`);
     }
@@ -49,6 +52,42 @@ export default function Dashboard({ lang }: { lang: Lang }) {
         <div className="card">
           <div className="label">{t("disabledKeys", lang)}</div>
           <div className="value">{num(stats?.disabled)}</div>
+        </div>
+      </div>
+
+      <h1 style={{ fontSize: 16 }}>{t("usage7d", lang)}</h1>
+      <div className="cards">
+        <div className="card">
+          <div className="label">{t("requests", lang)}</div>
+          <div className="value">{usage?.requests ?? "—"}</div>
+        </div>
+        <div className="card">
+          <div className="label">{t("promptTokens", lang)}</div>
+          <div className="value">{usage?.promptTokens ?? "—"}</div>
+        </div>
+        <div className="card">
+          <div className="label">{t("completionTokens", lang)}</div>
+          <div className="value">{usage?.completionTokens ?? "—"}</div>
+        </div>
+        <div className="card">
+          <div className="label">{t("price", lang)}</div>
+          <div className="value">{usage ? usage.priceCredits.toFixed(2) : "—"}</div>
+        </div>
+        <div className="card">
+          <div className="label">{t("cacheHits", lang)}</div>
+          <div className="value">{usage?.cacheHits ?? "—"}</div>
+        </div>
+        <div className="card" style={{ minWidth: 220 }}>
+          <div className="label">{t("topModels", lang)}</div>
+          <div style={{ marginTop: 4, fontSize: 13 }}>
+            {(usage?.topModels ?? []).slice(0, 5).map((m) => (
+              <div key={m.model} style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{m.model}</span>
+                <span className="muted">{m.requests}</span>
+              </div>
+            ))}
+            {(!usage || usage.topModels.length === 0) && <span className="muted">—</span>}
+          </div>
         </div>
       </div>
 

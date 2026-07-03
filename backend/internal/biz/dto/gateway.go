@@ -27,6 +27,8 @@ type CreateVirtualKeyReq struct {
 	DailyPointQuota    float64         `json:"dailyPointQuota"`
 	HourlyPointQuota   float64         `json:"hourlyPointQuota"`
 	Description        string          `json:"description"`
+	TenantID           uint            `json:"tenantId"`     // 0 = default tenant
+	ProjectRefID       uint            `json:"projectRefId"` // 0 = default project
 }
 
 type CreateVirtualKeyResp struct {

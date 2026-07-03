@@ -37,6 +37,7 @@ type GatewayUseCase struct {
 	quota   *QuotaManager
 	audit   *AuditWorker
 	router  *RouterManager
+	billing *BillingManager
 	metrics *observability.Metrics
 	aiConf  *conf.AI
 	sysCfg  *conf.System
@@ -51,6 +52,7 @@ func NewGatewayUseCase(
 	quota *QuotaManager,
 	audit *AuditWorker,
 	router *RouterManager,
+	billing *BillingManager,
 	metrics *observability.Metrics,
 	aiConf *conf.AI,
 	sysCfg *conf.System,
@@ -62,6 +64,7 @@ func NewGatewayUseCase(
 		quota:   quota,
 		audit:   audit,
 		router:  router,
+		billing: billing,
 		metrics: metrics,
 		aiConf:  aiConf,
 		sysCfg:  sysCfg,
@@ -125,6 +128,14 @@ func (uc *GatewayUseCase) CreateVirtualKey(ctx context.Context, req dto.CreateVi
 		HourlyPointQuota:   req.HourlyPointQuota,
 		CreatedBy:          creatorID,
 		Description:        req.Description,
+		TenantID:           req.TenantID,
+		ProjectRefID:       req.ProjectRefID,
+	}
+	if vk.TenantID == 0 { // attach to the default tenant so billing always has an owner
+		var defTenant model.AITenant
+		if err := uc.db.WithContext(ctx).Where("name = ?", model.DefaultTenantName).First(&defTenant).Error; err == nil {
+			vk.TenantID = defTenant.ID
+		}
 	}
 	if err := uc.db.WithContext(ctx).Create(&vk).Error; err != nil {
 		return dto.CreateVirtualKeyResp{}, err
@@ -538,6 +549,54 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		return
 	}
 
+	// 计费闸门（P1，docs/design/03-billing-and-monetization.md）：
+	// 租户账户停用/余额不足 → 402；否则按估算冻结，响应后按实际结算。
+	tenantID := uc.tenantIDForKey(ctx, key)
+	requestID := generateRequestID()
+	var freeze *FreezeHandle
+	if uc.billing != nil {
+		var admitErr error
+		freeze, admitErr = uc.billing.Admit(ctx, tenantID, providerID, realModelName, body)
+		if admitErr != nil {
+			if uc.metrics != nil {
+				uc.metrics.BillingRejections.WithLabelValues("rejected").Inc()
+			}
+			uc.writeAuditLog(ctx, key, providerID, realModelName, body, nil, 0, 0, 0, 0, 0, http.StatusPaymentRequired, admitErr.Error(), false, ClientIPFromRequest(r), "openai", 0, 0, "", requestedModel)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPaymentRequired)
+			w.Write([]byte(billingErrorBody(admitErr.Error())))
+			return
+		}
+	}
+
+	// 精确响应缓存（P2-4，docs/design/07-caching-strategies.md）：
+	// 护栏之后、路由之前；命中即跳过上游与 Token 配额，按命中策略计费。
+	cacheCfg, cacheEnabled := parseCacheConfig(key)
+	var cacheDigest string
+	if cacheEnabled && cacheableRequest(r.URL.Path, body) {
+		cacheDigest, _ = respCacheKey(tenantID, realModelName, body)
+		if entry := cacheLookup(ctx, uc.rdb, cacheDigest); entry != nil {
+			if uc.metrics != nil {
+				uc.metrics.CacheRequests.WithLabelValues("exact", "hit").Inc()
+			}
+			var hitPrice int64
+			if freeze != nil && freeze.Account != nil {
+				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, entry.ProviderID, realModelName, entry.Prompt, entry.Completion, entry.CacheRead)
+				hitPrice = cacheHitPriceMicro(fullPrice, cacheCfg)
+				uc.billing.Settle(ctx, freeze, requestID, hitPrice, "", "cache-hit model="+realModelName)
+			}
+			if uc.billing != nil {
+				uc.billing.RecordUsage(tenantID, key.ID, entry.ProviderID, realModelName, 0, 0, 0, 0, hitPrice, true)
+			}
+			uc.writeAuditLog(ctx, key, entry.ProviderID, realModelName, body, entry.Body, entry.Prompt, entry.Completion, entry.CacheRead, 0, time.Since(startTime).Milliseconds(), http.StatusOK, "cache-hit-exact", false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			writeCachedResponse(w, entry, extractStreamFlag(body), realModelName)
+			return
+		}
+		if uc.metrics != nil {
+			uc.metrics.CacheRequests.WithLabelValues("exact", "miss").Inc()
+		}
+	}
+
 	sendBody := replaceModelInBody(body, realModelName)
 	isStream := extractStreamFlag(sendBody)
 	sendBody = uc.injectModelExtraParams(ctx, sendBody, providerID, realModelName)
@@ -590,16 +649,14 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		}
 
 		reqCtx, cancelReq := proxyRequestCtx(ctx, isStream, uc.aiConf)
-		upstreamPath := rewriteOpenAIPathForProvider(openAIPath, entry.provider)
-		targetURL := entry.provider.BaseURL + upstreamPath
-		upstreamReq, err := http.NewRequestWithContext(reqCtx, r.Method, targetURL, strings.NewReader(string(sendBody)))
+		// 协议适配层（P2-1）：按提供方方言构建上游请求
+		upstreamReq, err := buildUpstreamRequest(reqCtx, entry, r.Method, openAIPath, sendBody, isStream)
 		if err != nil {
 			cancelReq()
-			http.Error(w, `{"error":{"message":"internal error"}}`, http.StatusInternalServerError)
-			return
+			uc.logger.Errorf("AI 网关构建上游请求失败 provider=%s err=%v", entry.provider.Name, err)
+			lastErrMsg = err.Error()
+			continue
 		}
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Authorization", "Bearer "+entry.apiKey)
 
 		attemptResp, reqErr := client.Do(upstreamReq)
 		if reqErr != nil {
@@ -647,6 +704,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	}
 
 	if resp == nil || selectedProvider == nil {
+		if uc.billing != nil {
+			uc.billing.ReleaseFreeze(ctx, freeze)
+		}
 		http.Error(w, `{"error":{"message":"all upstream providers failed"}}`, http.StatusBadGateway)
 		uc.writeAuditLog(ctx, key, providerID, realModelName, body, nil, 0, 0, 0, 0, time.Since(startTime).Milliseconds(), lastStatus, lastErrMsg, false, ClientIPFromRequest(r), "openai", 0, 0, "", requestedModel)
 		if uc.metrics != nil {
@@ -664,35 +724,64 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 
 	go setStickySession(context.Background(), uc.rdb, sessionHash, selectedProvider.provider.ID, realModelName)
 
-	for k, vv := range resp.Header {
-		for _, v := range vv {
-			w.Header().Add(k, v)
-		}
-	}
-	w.WriteHeader(resp.StatusCode)
-
 	var respBody []byte
 	var streamErr string
 	promptTokens, completionTokens, cachedTokens := 0, 0, 0
-
 	respIsStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
-	if isStream && !respIsStream {
-		uc.logger.Warnf("请求声明流式但上游返回非 SSE Content-Type contentType=%s provider=%s",
-			resp.Header.Get("Content-Type"), selectedProvider.provider.Name)
-	}
 
-	if respIsStream {
-		respBody, promptTokens, completionTokens, cachedTokens, streamErr = streamProxy(w, resp.Body)
-		if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
-			p, c, cached := parseUsageFromBody(respBody)
-			if p > 0 || c > 0 {
+	if selectedProvider.provider.ProviderType == model.ProviderTypeAnthropic && resp.StatusCode < 300 {
+		// 协议适配（P2-1/P2-3）：Anthropic 响应翻译回 OpenAI 格式，用量归一化。
+		// 不透传上游响应头（Content-Length/格式均已改变），由翻译层自建。
+		if respIsStream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.WriteHeader(http.StatusOK)
+			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 64<<10), 4<<20)
+			respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
+		} else {
+			raw, _ := io.ReadAll(resp.Body)
+			translated, p, c, cached, terr := anthropicToOpenAIResponse(raw, realModelName)
+			if terr != nil {
+				uc.logger.Errorf("Anthropic 响应翻译失败 provider=%s err=%v", selectedProvider.provider.Name, terr)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte(`{"error":{"message":"upstream response translation failed"}}`))
+				respBody = raw
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write(translated)
+				respBody = translated
 				promptTokens, completionTokens, cachedTokens = p, c, cached
 			}
 		}
 	} else {
-		respBody, _ = io.ReadAll(resp.Body)
-		w.Write(respBody)
-		promptTokens, completionTokens, cachedTokens = parseUsageFromBody(respBody)
+		for k, vv := range resp.Header {
+			for _, v := range vv {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+
+		if isStream && !respIsStream {
+			uc.logger.Warnf("请求声明流式但上游返回非 SSE Content-Type contentType=%s provider=%s",
+				resp.Header.Get("Content-Type"), selectedProvider.provider.Name)
+		}
+
+		if respIsStream {
+			respBody, promptTokens, completionTokens, cachedTokens, streamErr = streamProxy(w, resp.Body)
+			if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
+				p, c, cached := parseUsageFromBody(respBody)
+				if p > 0 || c > 0 {
+					promptTokens, completionTokens, cachedTokens = p, c, cached
+				}
+			}
+		} else {
+			respBody, _ = io.ReadAll(resp.Body)
+			w.Write(respBody)
+			promptTokens, completionTokens, cachedTokens = parseUsageFromBody(respBody)
+		}
 	}
 
 	auditErrMsg := ""
@@ -711,6 +800,35 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	openaiCredits, openaiPrice := uc.quota.CommitCredits(ctx, key, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
 	openaiUpstreamID := resp.Header.Get("x-request-id")
 	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, 0, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), "openai", openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
+
+	// 计费结算 + 用量日聚合（P1-3/P1-5）
+	if uc.billing != nil {
+		var priceMicro int64
+		currency := "CNY"
+		if freeze != nil && freeze.Account != nil {
+			currency = freeze.Account.Currency
+			priceMicro = uc.billing.PriceMicro(ctx, freeze.Account, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+			uc.billing.Settle(ctx, freeze, requestID, priceMicro, openaiUpstreamID, "model="+realModelName)
+		}
+		costMicro := uc.billing.CostMicro(ctx, currency, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+		if priceMicro == 0 {
+			priceMicro = costMicro // no sell-side account: report price at cost
+		}
+		uc.billing.RecordUsage(tenantID, key.ID, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens, costMicro, priceMicro, false)
+	}
+
+	// 精确缓存写入（仅缓存非流式成功响应；流式响应不重构存储）
+	if cacheEnabled && cacheDigest != "" && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
+		cacheStore(uc.rdb, cacheDigest, &cachedResponse{
+			Body:       respBody,
+			Prompt:     promptTokens,
+			Completion: completionTokens,
+			CacheRead:  cachedTokens,
+			ProviderID: selectedProvider.provider.ID,
+			Model:      realModelName,
+			CreatedAt:  time.Now().Unix(),
+		}, cacheCfg.TTLSec)
+	}
 
 	if uc.metrics != nil {
 		providerLabel := selectedProvider.provider.Name
@@ -1559,6 +1677,10 @@ func allowedModelList(key *model.AIVirtualKey) []string {
 func (uc *GatewayUseCase) StartBackgroundWorkers(ctx context.Context) {
 	go StartKeyCacheInvalidator(ctx, uc.rdb, uc.rawLog)
 	go StartQuotaReleaseSweeper(ctx, uc.db, uc.rdb, uc.rawLog)
+	uc.EnsureTenancyDefaults(ctx)
+	if uc.billing != nil {
+		uc.billing.Start(ctx)
+	}
 }
 
 func containsString(list []string, target string) bool {

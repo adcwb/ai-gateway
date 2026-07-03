@@ -45,6 +45,14 @@ type AIVirtualKey struct {
 	HourlyPointQuota float64 `gorm:"column:hourly_point_quota;type:decimal(18,4);default:0" json:"hourlyPointQuota"`
 	Description      string  `gorm:"type:varchar(256)" json:"description"`
 
+	// P1 tenancy: keys attach to a tenant (billing account scope) and
+	// optionally a project (cost attribution). Zero = default tenant.
+	TenantID     uint `gorm:"column:tenant_id;index;default:0" json:"tenantId"`
+	ProjectRefID uint `gorm:"column:project_ref_id;index;default:0" json:"projectRefId"`
+
+	// P2 response cache config: {"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int}
+	CacheConfig datatypes.JSON `gorm:"column:cache_config;type:json" json:"cacheConfig"`
+
 	ModelQuotas []AIVirtualKeyModelQuota `gorm:"-" json:"modelQuotas,omitempty"`
 }
 

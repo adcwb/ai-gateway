@@ -267,6 +267,25 @@ Note: `wire_gen.go` is currently hand-maintained in wire's output shape; keep it
 - `DELETE /ai/gateway/providers?id=` – Soft delete
 - `GET /ai/gateway/providers/health` – Live circuit-breaker state per provider
 
+**Tenancy & Billing (P1)**:
+
+- `POST|GET /ai/gateway/tenants` – Tenants (default tenant auto-created; disabled billing-account shell per tenant)
+- `POST|GET /ai/gateway/projects` – Projects under a tenant
+- `POST /ai/gateway/billing/recharge` – Credit an account (idempotency-key aware)
+- `PUT /ai/gateway/billing/account` – Enable billing, mode, credit limit, watermark, price table
+- `GET /ai/gateway/billing/ledger?tenantId=` – Append-only double-entry ledger
+- `GET /ai/gateway/stats/overview|timeseries` – Usage reports from `ai_usage_dailies` pre-aggregation
+
+Billing flow on the proxy path (`internal/biz/billing.go`): `Admit` (suspension check + Redis freeze of the price estimate) → upstream → `Settle` (refund over-freeze, async ledger deduct, budget alert, grace→suspension transitions). Opt-in: no enabled account ⇒ zero behavior change. Redis down ⇒ fail open.
+
+### Protocol adapters (P2, `internal/biz/protocol.go`)
+
+`AIProvider.ProviderType` selects the outbound dialect: `openai_compatible` (identity, fast path), `azure_openai` (api-key header + api-version query via `adapter_config`), `anthropic` (full request/response/SSE translation with usage normalization). Response cache (`internal/biz/respcache.go`): per-key `cache_config` JSON enables exact-match caching with free/discount/full hit billing.
+
+### PII engine (P1-6, `internal/biz/pii_engine.go`)
+
+`applyPIIPolicy` is real: detectors (cn_id_card w/ checksum, cn_mobile, bank_card Luhn, email, ipv4, api_secret) + prompt-injection signatures, configured per `AIPIIPolicy.RuleConfig` (`{"detectors":{...},"promptInjection":true}`), actions block/redact/log.
+
 ### Proxy API (OpenAI-compatible, authenticated via Bearer sk-vk-*)
 
 - `GET /ai/v1/models` – List models for key

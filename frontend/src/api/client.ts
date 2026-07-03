@@ -128,3 +128,58 @@ export interface PageResp<T> {
   total?: number;
   [k: string]: unknown;
 }
+
+export interface Tenant {
+  id: number;
+  name: string;
+  displayName: string;
+  status: string;
+  keyCount: number;
+  account?: BillingAccount | null;
+}
+
+export interface BillingAccount {
+  id: number;
+  tenantId: number;
+  isEnabled: boolean;
+  mode: "prepaid" | "postpaid";
+  currency: string;
+  balanceMicro: number;
+  creditLimitMicro: number;
+  lowWatermarkMicro: number;
+  status: "active" | "grace" | "suspended";
+  graceUntil?: string | null;
+}
+
+export interface LedgerEntry {
+  id: number;
+  createdAt: string;
+  entryType: string;
+  amountMicro: number;
+  balanceAfterMicro: number;
+  idempotencyKey: string;
+  refType: string;
+  refId: string;
+  remark: string;
+}
+
+export interface UsageOverview {
+  days: number;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  costCredits: number;
+  priceCredits: number;
+  cacheHits: number;
+  topModels: { model: string; requests: number; priceMicro: number }[];
+}
+
+export interface Project {
+  id: number;
+  tenantId: number;
+  name: string;
+  description: string;
+}
+
+export const MICRO = 1_000_000;
+export const credits = (micro: number) => (micro / MICRO).toFixed(4);

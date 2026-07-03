@@ -8,4 +8,5 @@ var ProviderSet = wire.NewSet(
 	NewQuotaManager,
 	NewAuditWorker,
 	NewRouterManager,
+	NewBillingManager,
 )

@@ -98,7 +98,13 @@ curl localhost:8080/ai/v1/chat/completions \
 
 ## 状态与路线图
 
-当前版本实现了[路线图](docs/zh-CN/03-roadmap.md)的 **P0「开源就绪」**里程碑：加权 LB + 故障转移 + 熔断、指标/探针、管理认证、提供方 Key 加密、多数据库、测试 + CI、compose 栈、控制台 MVP。P1（多租户、余额计费、预算告警）与 P2（Anthropic/Gemini 原生协议、语义缓存、护栏、支付）已在[设计套件](docs/zh-CN/README.md)中完成设计——欢迎贡献。
+对照[路线图](docs/zh-CN/03-roadmap.md)已实现：
+
+- **P0 开源就绪**：加权 LB + 故障转移 + 熔断、指标/探针、管理认证、提供方 Key 加密、多数据库、测试 + CI、compose 栈、控制台 MVP。
+- **P1 商业闭环（核心）**：租户→项目→Key 层级、可选启用的预付/后付余额账户（复式流水 + 冻结→结算扣减）、宽限期停用、预算告警、售价价格表、按日用量归集与报表、规则式 PII 引擎（block/redact/log）。
+- **P2 差异化（核心）**：Anthropic 原生出口适配（含 SSE 流式翻译）与 Azure OpenAI 适配及用量归一化、精确响应缓存与缓存感知计费。
+
+已完成设计、留待后续实现（见[设计套件](docs/zh-CN/README.md)）：用户/RBAC 与 OIDC、支付网关/订阅/发票、Anthropic Messages 入口、Gemini/Bedrock 适配、语义缓存、外部 PII 引擎、OpenTelemetry 追踪。欢迎贡献。
 
 ## 开发
 

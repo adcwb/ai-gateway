@@ -76,6 +76,13 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIGatewayRouterEvent{},
 		&model.AICreditsRate{},
 		&model.AIPIIPolicy{},
+		&model.AITenant{},
+		&model.AIProject{},
+		&model.AIBillingAccount{},
+		&model.AIBillingLedger{},
+		&model.AIUsageDaily{},
+		&model.AIPriceTable{},
+		&model.AIPriceTableItem{},
 	)
 }
 

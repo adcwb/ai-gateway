@@ -85,6 +85,17 @@ func NewHTTPServer(
 	mgmt.HandleFunc("DELETE /ai/gateway/providers", gwSvc.DeleteProvider)
 	mgmt.HandleFunc("GET /ai/gateway/providers/health", gwSvc.ProviderHealth)
 
+	// P1: tenancy, billing, usage stats (docs/design/03,04)
+	mgmt.HandleFunc("POST /ai/gateway/tenants", gwSvc.CreateTenant)
+	mgmt.HandleFunc("GET /ai/gateway/tenants", gwSvc.ListTenants)
+	mgmt.HandleFunc("POST /ai/gateway/projects", gwSvc.CreateProject)
+	mgmt.HandleFunc("GET /ai/gateway/projects", gwSvc.ListProjects)
+	mgmt.HandleFunc("POST /ai/gateway/billing/recharge", gwSvc.Recharge)
+	mgmt.HandleFunc("PUT /ai/gateway/billing/account", gwSvc.UpdateBillingAccount)
+	mgmt.HandleFunc("GET /ai/gateway/billing/ledger", gwSvc.ListLedger)
+	mgmt.HandleFunc("GET /ai/gateway/stats/overview", gwSvc.UsageOverview)
+	mgmt.HandleFunc("GET /ai/gateway/stats/timeseries", gwSvc.UsageTimeseries)
+
 	mux.Handle("/ai/gateway/", admin.Middleware(mgmt))
 
 	// -------------------------------------------------------------------------
