@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: ai-gateway
+    folder: ai-gateway
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

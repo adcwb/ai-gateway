@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build console
+        working-directory: frontend
+        run: npm install && npm run build
+      - name: Embed console
+        run: |
+          rm -rf backend/internal/console/dist
+          cp -r frontend/dist backend/internal/console/dist
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Build multi-platform binaries
+        working-directory: backend
+        run: |
+          mkdir -p ../out
+          for target in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+            set -- $target
+            ext=""; [ "$1" = "windows" ] && ext=".exe"
+            CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath \
+              -o "../out/ai-gateway-${GITHUB_REF_NAME}-$1-$2${ext}" ./cmd/server
+          done
+          (cd ../out && sha256sum * > SHA256SUMS)
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

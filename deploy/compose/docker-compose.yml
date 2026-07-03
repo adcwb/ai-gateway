@@ -1,0 +1,73 @@
+# One-command evaluation / small-production stack (docs/design/10-deployment-and-ops.md).
+#   docker compose up -d
+# Optional observability profile:
+#   docker compose --profile observability up -d
+name: ai-gateway
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"   # proxy + management + console
+      - "9090:9090"   # Prometheus metrics
+    environment:
+      AIGW_DB_DRIVER: mysql
+      AIGW_DB_DSN: "aigw:aigw-password@tcp(mysql:3306)/ai_gateway?charset=utf8mb4&parseTime=True&loc=Local"
+      AIGW_REDIS_ADDR: "redis:6379"
+      AIGW_ENCRYPTION_KEY: "change-this-to-a-32-byte-secret!"
+      AIGW_ADMIN_TOKEN: "change-this-admin-token"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root-password
+      MYSQL_DATABASE: ai_gateway
+      MYSQL_USER: aigw
+      MYSQL_PASSWORD: aigw-password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uaigw", "-paigw-password"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+volumes:
+  mysql-data:
+  redis-data:

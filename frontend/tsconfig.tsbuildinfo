@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/i18n.ts","./src/main.tsx","./src/api/client.ts","./src/pages/audit.tsx","./src/pages/dashboard.tsx","./src/pages/keys.tsx","./src/pages/login.tsx","./src/pages/providers.tsx"],"version":"5.9.3"}

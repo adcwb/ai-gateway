@@ -1,0 +1,29 @@
+server:
+  http:
+    addr: ":8080"
+    timeout: 30s
+  metrics:
+    addr: ":9090"          # Prometheus listener; empty = disabled
+
+database:
+  driver: "mysql"           # mysql / postgres / sqlite
+  dsn: "user:password@tcp(127.0.0.1:3306)/ai_gateway?charset=utf8mb4&parseTime=True&loc=Local"
+  # postgres example: "host=127.0.0.1 user=postgres password=postgres dbname=ai_gateway port=5432 sslmode=disable"
+  # sqlite example (demo only): "ai_gateway.db"
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+ai:
+  proxy_timeout_sec: 120
+  agent_timeout_sec: 600
+
+system:
+  encryption_key: "change-this-to-a-32-byte-secret!"   # exactly 32 bytes (AES-256-GCM)
+  admin_token: ""            # REQUIRED in production; empty = open management API (warning logged)
+
+# Every key above can be overridden via environment variables:
+# AIGW_HTTP_ADDR, AIGW_METRICS_ADDR, AIGW_DB_DRIVER, AIGW_DB_DSN,
+# AIGW_REDIS_ADDR, AIGW_REDIS_PASSWORD, AIGW_ENCRYPTION_KEY, AIGW_ADMIN_TOKEN

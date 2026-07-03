@@ -1,0 +1,23 @@
+# binaries & build output
+backend/server
+backend/server.exe
+backend/coverage.out
+frontend/dist/
+frontend/node_modules/
+out/
+
+# embedded console: only the placeholder is tracked
+backend/internal/console/dist/*
+!backend/internal/console/dist/index.html
+
+# local env & editor
+.env
+.env.*
+*.local
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# local databases
+*.db
