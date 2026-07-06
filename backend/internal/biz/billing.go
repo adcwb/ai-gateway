@@ -1,10 +1,12 @@
 package biz
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 	"github.com/opscenter/ai-gateway/internal/observability"
 )
@@ -31,6 +34,7 @@ type BillingManager struct {
 	db      *gorm.DB
 	rdb     *redis.Client
 	metrics *observability.Metrics
+	sysCfg  *conf.System
 	logger  *log.Helper
 
 	ledgerQ chan ledgerTask
@@ -39,11 +43,12 @@ type BillingManager struct {
 	acctCache sync.Map // tenantID → acctCacheEntry
 }
 
-func NewBillingManager(db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics, logger log.Logger) *BillingManager {
+func NewBillingManager(db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics, sysCfg *conf.System, logger log.Logger) *BillingManager {
 	return &BillingManager{
 		db:      db,
 		rdb:     rdb,
 		metrics: metrics,
+		sysCfg:  sysCfg,
 		logger:  log.NewHelper(logger),
 		ledgerQ: make(chan ledgerTask, 4096),
 		usageQ:  make(chan usageTask, 4096),
@@ -345,6 +350,7 @@ func (bm *BillingManager) postBalanceChecks(ctx context.Context, acct *model.AIB
 			bm.setStatus(ctx, acct, model.BillingStatusSuspended, nil)
 			bm.logger.Warnf("billing: 账户已欠费停用 acct=%d tenant=%d", acct.ID, acct.TenantID)
 		}
+		bm.sendAlert("account_"+acct.Status, acct)
 	case headroom > 0 && acct.Status != model.BillingStatusActive:
 		bm.setStatus(ctx, acct, model.BillingStatusActive, nil)
 		bm.logger.Infof("billing: 账户恢复 active acct=%d tenant=%d", acct.ID, acct.TenantID)
@@ -360,6 +366,7 @@ func (bm *BillingManager) postBalanceChecks(ctx context.Context, acct *model.AIB
 			if bm.metrics != nil {
 				bm.metrics.BillingRejections.WithLabelValues("budget_alert").Inc()
 			}
+			bm.sendAlert("budget_alert", acct)
 		}
 	}
 }
@@ -630,4 +637,36 @@ func (bm *BillingManager) UsageTimeseries(ctx context.Context, tenantID uint, da
 // billingErrorBody renders the OpenAI-style error for 402 responses.
 func billingErrorBody(msg string) string {
 	return `{"error":{"message":"` + strings.ReplaceAll(msg, `"`, `'`) + `","type":"billing_error","code":"BILLING_REJECTED"}}`
+}
+
+// sendAlert POSTs a billing event to the configured webhook (best-effort,
+// async, 5s timeout). Event types: budget_alert / account_grace / account_suspended.
+func (bm *BillingManager) sendAlert(eventType string, acct *model.AIBillingAccount) {
+	if bm.sysCfg == nil || strings.TrimSpace(bm.sysCfg.AlertWebhook) == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":           eventType,
+		"tenantId":       acct.TenantID,
+		"accountId":      acct.ID,
+		"balanceCredits": float64(acct.BalanceMicro) / model.MicroCreditScale,
+		"status":         acct.Status,
+		"occurredAt":     time.Now().Format(time.RFC3339),
+	})
+	url := bm.sysCfg.AlertWebhook
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			bm.logger.Warnf("billing: 告警 webhook 投递失败 type=%s err=%v", eventType, err)
+			return
+		}
+		resp.Body.Close()
+	}()
 }

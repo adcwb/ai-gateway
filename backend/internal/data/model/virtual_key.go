@@ -50,6 +50,9 @@ type AIVirtualKey struct {
 	TenantID     uint `gorm:"column:tenant_id;index;default:0" json:"tenantId"`
 	ProjectRefID uint `gorm:"column:project_ref_id;index;default:0" json:"projectRefId"`
 
+	// Routing strategy: "" = weighted (default) / priority / least_latency / least_cost
+	RoutingStrategy string `gorm:"column:routing_strategy;type:varchar(24);default:''" json:"routingStrategy"`
+
 	// P2 response cache config: {"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int}
 	CacheConfig datatypes.JSON `gorm:"column:cache_config;type:json" json:"cacheConfig"`
 

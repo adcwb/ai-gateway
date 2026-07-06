@@ -42,6 +42,7 @@ const (
 	ProviderTypeOpenAICompatible = "openai_compatible"
 	ProviderTypeAnthropic        = "anthropic"
 	ProviderTypeAzureOpenAI      = "azure_openai"
+	ProviderTypeGemini           = "gemini"
 )
 
 func (AIProvider) TableName() string { return "ai_providers" }

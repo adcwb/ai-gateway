@@ -67,3 +67,17 @@ func (s *GatewayService) ProviderHealth(w http.ResponseWriter, r *http.Request) 
 	}
 	okWith(w, items)
 }
+
+func (s *GatewayService) SyncProviderModels(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
+	if err != nil || id == 0 {
+		failWith(w, http.StatusBadRequest, "missing or invalid id")
+		return
+	}
+	p, serr := s.uc.SyncProviderModels(r.Context(), uint(id))
+	if serr != nil {
+		failWithErr(w, serr)
+		return
+	}
+	okWith(w, p)
+}

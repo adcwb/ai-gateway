@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/datatypes"
+)
 
 type AIGatewayAuditLog struct {
 	ID        uint      `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
@@ -28,6 +32,12 @@ type AIGatewayAuditLog struct {
 	CacheCreationTokens int `gorm:"default:0" json:"cacheCreationTokens"`
 
 	Protocol  string `gorm:"type:varchar(16);default:'openai'" json:"protocol"`
+
+	// Failover trail (docs/design/01-routing-and-lb.md): total upstream
+	// attempts and per-attempt provider/status/error/latency records.
+	AttemptsTotal    int            `gorm:"column:attempts_total;default:0" json:"attemptsTotal"`
+	ProviderAttempts datatypes.JSON `gorm:"column:provider_attempts;type:json" json:"providerAttempts,omitempty"`
+
 	LatencyMs int64  `json:"latencyMs"`
 	StatusCode int   `json:"statusCode"`
 	ErrorMessage string `gorm:"type:varchar(512)" json:"errorMessage"`

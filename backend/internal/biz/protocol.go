@@ -66,6 +66,24 @@ func buildUpstreamRequest(ctx context.Context, entry *providerEntry, method, ope
 		req.Header.Set("anthropic-version", cfg.AnthropicVersion)
 		return req, nil
 
+	case model.ProviderTypeGemini:
+		gemBody, modelName, _, err := openAIToGeminiRequest(sendBody)
+		if err != nil {
+			return nil, fmt.Errorf("gemini request translation: %w", err)
+		}
+		endpoint := ":generateContent"
+		if isStream {
+			endpoint = ":streamGenerateContent?alt=sse"
+		}
+		url := fmt.Sprintf("%s/v1beta/models/%s%s", p.BaseURL, modelName, endpoint)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(gemBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-goog-api-key", entry.apiKey)
+		return req, nil
+
 	case model.ProviderTypeAzureOpenAI:
 		// BaseURL is expected to include /openai/deployments/{deployment}
 		path := openAIPath

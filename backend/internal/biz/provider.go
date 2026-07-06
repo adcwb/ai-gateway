@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -131,6 +135,67 @@ func (uc *GatewayUseCase) DeleteProvider(ctx context.Context, id uint) error {
 		return ErrProviderNotFound
 	}
 	return nil
+}
+
+// SyncProviderModels pulls the upstream /models list (openai_compatible
+// dialect only) and refreshes the provider's model catalog, preserving
+// is_default flags for names that survive the sync.
+func (uc *GatewayUseCase) SyncProviderModels(ctx context.Context, id uint) (*model.AIProvider, error) {
+	entry, err := uc.loadProviderDirect(ctx, id)
+	if err != nil {
+		return nil, ErrProviderNotFound
+	}
+	p := entry.provider
+	if p.ProviderType != model.ProviderTypeOpenAICompatible && p.ProviderType != "" {
+		return nil, ErrProviderSyncUnsupported.WithMetadata(map[string]string{"providerType": p.ProviderType})
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, p.BaseURL+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+entry.apiKey)
+	resp, err := newProxyClient().Do(req)
+	if err != nil {
+		return nil, ErrProviderSyncFailed.WithMetadata(map[string]string{"err": err.Error()})
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, ErrProviderSyncFailed.WithMetadata(map[string]string{"status": fmt.Sprintf("%d", resp.StatusCode)})
+	}
+	var upstream struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&upstream); err != nil || len(upstream.Data) == 0 {
+		return nil, ErrProviderSyncFailed.WithMetadata(map[string]string{"err": "empty or unparsable model list"})
+	}
+
+	existingDefaults := map[string]bool{}
+	if models, perr := p.ParseModels(); perr == nil {
+		for _, m := range models {
+			if m.IsDefault {
+				existingDefaults[m.Name] = true
+			}
+		}
+	}
+	merged := make([]model.ProviderModel, 0, len(upstream.Data))
+	for _, m := range upstream.Data {
+		merged = append(merged, model.ProviderModel{Name: m.ID, IsDefault: existingDefaults[m.ID]})
+	}
+	raw, _ := json.Marshal(merged)
+	now := time.Now()
+	if err := uc.db.WithContext(ctx).Model(&model.AIProvider{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"models": datatypes.JSON(raw), "last_synced_at": now}).Error; err != nil {
+		return nil, err
+	}
+	var out model.AIProvider
+	uc.db.WithContext(ctx).First(&out, id)
+	uc.logger.Infof("provider: 已同步模型列表 provider=%s count=%d", p.Name, len(merged))
+	return &out, nil
 }
 
 // ProviderHealth returns the live breaker state per provider for the console.

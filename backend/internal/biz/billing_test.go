@@ -28,7 +28,7 @@ func newTestBilling(t *testing.T) (*BillingManager, *gorm.DB) {
 		&model.AIPriceTable{}, &model.AIPriceTableItem{}, &model.AIModelItem{}, &model.AICreditsRate{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return NewBillingManager(db, rdb, nil, log.NewStdLogger(testWriter{t})), db
+	return NewBillingManager(db, rdb, nil, nil, log.NewStdLogger(testWriter{t})), db
 }
 
 func seedAccount(t *testing.T, db *gorm.DB, bm *BillingManager, tenantID uint, balanceCredits float64) *model.AIBillingAccount {

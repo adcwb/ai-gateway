@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"math"
 	mrand "math/rand/v2"
 	"sort"
@@ -269,18 +270,27 @@ type RouteCandidate struct {
 	Model      string
 }
 
+// Routing strategies selectable per key via AIVirtualKey.RoutingStrategy.
+const (
+	StrategyWeighted     = "weighted" // default: priority tier, then weighted random
+	StrategyPriority     = "priority" // strict priority ordering (fallback-chain style)
+	StrategyLeastLatency = "least_latency"
+	StrategyLeastCost    = "least_cost"
+)
+
 // Candidates returns an ordered provider list for realModel, primary first,
-// remaining fallbacks ordered by priority tier then weighted-random within a
-// tier (activating the long-dormant AIProvider.Weight field). Providers whose
-// breaker is open are moved to the very end rather than dropped, so a request
-// with no healthy candidates still makes one last-resort attempt.
-func (rm *RouterManager) Candidates(ctx context.Context, realModel string, primaryProviderID uint) []RouteCandidate {
+// remaining fallbacks ordered by the key's routing strategy (activating the
+// long-dormant AIProvider.Weight field). Providers whose breaker is open are
+// moved to the very end rather than dropped, so a request with no healthy
+// candidates still makes one last-resort attempt.
+func (rm *RouterManager) Candidates(ctx context.Context, realModel string, primaryProviderID uint, strategy string) []RouteCandidate {
 	providers := rm.providersForModel(ctx, realModel)
 
 	type ranked struct {
 		id       uint
 		priority int
 		sortKey  float64 // weighted-random ranking key (higher wins)
+		metric   float64 // strategy metric (lower wins): latency ms or cost
 		open     bool
 	}
 	items := make([]ranked, 0, len(providers))
@@ -296,16 +306,34 @@ func (rm *RouterManager) Candidates(ctx context.Context, realModel string, prima
 		}
 		// Efraimidis–Spirakis weighted random ordering: key = u^(1/w)
 		key := math.Pow(mrand.Float64(), 1.0/float64(w))
-		items = append(items, ranked{
+		item := ranked{
 			id:       p.ID,
 			priority: p.Priority,
 			sortKey:  key,
 			open:     rm.StateOf(ctx, p.ID) == model.BreakerStateOpen,
-		})
+		}
+		switch strategy {
+		case StrategyLeastLatency:
+			item.metric = rm.LatencyEWMA(ctx, p.ID) // unknown = 0 ⇒ optimistic probe
+		case StrategyLeastCost:
+			item.metric = rm.costPerMillion(ctx, p.ID, realModel)
+		}
+		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].open != items[j].open {
 			return !items[i].open // healthy first
+		}
+		switch strategy {
+		case StrategyLeastLatency, StrategyLeastCost:
+			if items[i].metric != items[j].metric {
+				return items[i].metric < items[j].metric
+			}
+		case StrategyPriority:
+			if items[i].priority != items[j].priority {
+				return items[i].priority < items[j].priority
+			}
+			return items[i].sortKey > items[j].sortKey
 		}
 		if items[i].priority != items[j].priority {
 			return items[i].priority < items[j].priority
@@ -356,6 +384,98 @@ func (rm *RouterManager) providersForModel(ctx context.Context, realModel string
 	}
 	rm.candCache.Store(realModel, candidateCacheEntry{providers: matched, expiresAt: time.Now().Add(candidateCacheTTL)})
 	return matched
+}
+
+// -----------------------------------------------------------------------------
+// Latency EWMA (feeds the least_latency strategy and the console)
+// -----------------------------------------------------------------------------
+
+const (
+	latencyKeyFmt   = "ai:gw:lat:%d"
+	latencyEWMAlpha = 0.3
+)
+
+// ReportLatency folds one successful attempt's latency into the provider's
+// EWMA (Redis-shared; non-atomic read-modify-write is acceptable for a
+// smoothed metric).
+func (rm *RouterManager) ReportLatency(ctx context.Context, providerID uint, ms int64) {
+	if rm.rdb == nil || ms <= 0 {
+		return
+	}
+	key := fmt.Sprintf(latencyKeyFmt, providerID)
+	prev, err := rm.rdb.HGet(ctx, key, "ewma_ms").Float64()
+	next := float64(ms)
+	if err == nil && prev > 0 {
+		next = latencyEWMAlpha*float64(ms) + (1-latencyEWMAlpha)*prev
+	}
+	rm.rdb.HSet(ctx, key, "ewma_ms", next)
+}
+
+// LatencyEWMA returns the provider's smoothed latency in ms (0 = unknown,
+// which strategies treat optimistically so new providers get probed).
+func (rm *RouterManager) LatencyEWMA(ctx context.Context, providerID uint) float64 {
+	if rm.rdb == nil {
+		return 0
+	}
+	v, err := rm.rdb.HGet(ctx, fmt.Sprintf(latencyKeyFmt, providerID), "ewma_ms").Float64()
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// costPerMillion sums input+output cost for ranking under least_cost.
+func (rm *RouterManager) costPerMillion(ctx context.Context, providerID uint, modelName string) float64 {
+	if rm.db == nil {
+		return 0
+	}
+	entry := getModelPriceEntry(ctx, rm.db, rm.logger, providerID, modelName)
+	if entry == nil || entry.noPricing {
+		return 0
+	}
+	return entry.inputPrice + entry.outputPrice
+}
+
+// -----------------------------------------------------------------------------
+// Per-attempt audit trail (docs/design/01-routing-and-lb.md)
+// -----------------------------------------------------------------------------
+
+// AttemptRecord captures one upstream attempt for the audit failover trail.
+type AttemptRecord struct {
+	ProviderID uint   `json:"providerId"`
+	Status     int    `json:"status"` // 0 = transport error / breaker skip
+	Err        string `json:"err,omitempty"`
+	LatencyMs  int64  `json:"latencyMs"`
+}
+
+type attemptTrailCtxKey struct{}
+
+// withAttemptTrail installs a mutable attempt recorder on the context.
+func withAttemptTrail(ctx context.Context) (context.Context, *[]AttemptRecord) {
+	trail := &[]AttemptRecord{}
+	return context.WithValue(ctx, attemptTrailCtxKey{}, trail), trail
+}
+
+func attemptTrailFromCtx(ctx context.Context) []AttemptRecord {
+	if v, ok := ctx.Value(attemptTrailCtxKey{}).(*[]AttemptRecord); ok && v != nil {
+		return *v
+	}
+	return nil
+}
+
+// recordAttempt appends one attempt to the context trail (no-op without one).
+func recordAttempt(ctx context.Context, rec AttemptRecord) {
+	if v, ok := ctx.Value(attemptTrailCtxKey{}).(*[]AttemptRecord); ok && v != nil {
+		*v = append(*v, rec)
+	}
+}
+
+// trimErr bounds error strings stored in the attempt trail.
+func trimErr(s string) string {
+	if len(s) > 200 {
+		return s[:200]
+	}
+	return s
 }
 
 // IsRetryableStatus reports whether an upstream HTTP status justifies failover

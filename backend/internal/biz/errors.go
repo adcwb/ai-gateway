@@ -22,5 +22,7 @@ var (
 	ErrBillingAccountNotFound = kerrors.NotFound("BILLING_ACCOUNT_NOT_FOUND", "billing account not found")
 	ErrBillingInvalidAmount   = kerrors.BadRequest("BILLING_INVALID_AMOUNT", "recharge amount must be positive")
 	ErrBillingSuspended       = kerrors.New(402, "BILLING_SUSPENDED", "account suspended: insufficient balance")
+	ErrProviderSyncUnsupported = kerrors.BadRequest("PROVIDER_SYNC_UNSUPPORTED", "model sync is only supported for openai_compatible providers")
+	ErrProviderSyncFailed      = kerrors.New(502, "PROVIDER_SYNC_FAILED", "failed to fetch model list from the upstream provider")
 	ErrInsufficientBalance    = kerrors.New(402, "INSUFFICIENT_BALANCE", "insufficient balance for this request")
 )

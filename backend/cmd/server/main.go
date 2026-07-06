@@ -19,6 +19,9 @@ func init() {
 }
 
 func main() {
+	if runSubcommand(os.Args) {
+		return
+	}
 	flag.Parse()
 
 	logger := log.NewStdLogger(os.Stdout)

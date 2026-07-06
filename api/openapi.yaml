@@ -1,0 +1,312 @@
+openapi: 3.0.3
+info:
+  title: ai-gateway Management API
+  description: |
+    Management-plane API of ai-gateway (docs/design/*). The OpenAI-compatible
+    proxy surface (`/ai/v1/*`) is intentionally NOT specified here — it follows
+    the OpenAI API contract and is authenticated with `Bearer sk-vk-*` virtual
+    keys. Everything below is authenticated with the static admin token
+    (`system.admin_token` / `AIGW_ADMIN_TOKEN`) unless marked otherwise.
+
+    Envelope: success `{"code":0,"data":...,"msg":"ok"}`; errors
+    `{"code":"REASON","msg":"..."}` with the HTTP status carried by the
+    response itself.
+  version: 0.3.0
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+security:
+  - adminToken: []
+components:
+  securitySchemes:
+    adminToken:
+      type: http
+      scheme: bearer
+      description: static admin token from system.admin_token
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        code: { description: 0 on success, error REASON string on failure }
+        data: { type: object }
+        msg: { type: string }
+    VirtualKey:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        keyPrefix: { type: string }
+        providerId: { type: integer }
+        tenantId: { type: integer }
+        projectRefId: { type: integer }
+        routingStrategy: { type: string, enum: ["", weighted, priority, least_latency, least_cost] }
+        cacheConfig: { type: object, description: '{"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int}' }
+        dailyTokenQuota: { type: integer }
+        hourlyTokenQuota: { type: integer }
+        hourlyReqQuota: { type: integer }
+        maxConcurrency: { type: integer }
+        isEnabled: { type: boolean }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    Provider:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        baseUrl: { type: string }
+        providerType: { type: string, enum: [openai_compatible, anthropic, azure_openai, gemini] }
+        models: { type: array, items: { type: object, properties: { name: { type: string }, is_default: { type: boolean } } } }
+        weight: { type: integer, description: load-balancing weight, 0 = drained }
+        priority: { type: integer, description: lower = preferred fallback tier }
+        adapterConfig: { type: object, description: 'dialect settings, e.g. {"apiVersion":"2024-06-01"} / {"anthropicVersion":"2023-06-01"}' }
+        isEnabled: { type: boolean }
+    ProviderHealth:
+      type: object
+      properties:
+        providerId: { type: integer }
+        name: { type: string }
+        state: { type: string, enum: [closed, half_open, open] }
+        isEnabled: { type: boolean }
+        weight: { type: integer }
+        priority: { type: integer }
+    Tenant:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        displayName: { type: string }
+        status: { type: string }
+        keyCount: { type: integer }
+        account: { $ref: '#/components/schemas/BillingAccount' }
+    BillingAccount:
+      type: object
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        isEnabled: { type: boolean }
+        mode: { type: string, enum: [prepaid, postpaid] }
+        currency: { type: string }
+        balanceMicro: { type: integer, description: micro-credits (1 credit = 1_000_000) }
+        creditLimitMicro: { type: integer }
+        lowWatermarkMicro: { type: integer }
+        status: { type: string, enum: [active, grace, suspended] }
+        graceUntil: { type: string, format: date-time, nullable: true }
+    LedgerEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        createdAt: { type: string, format: date-time }
+        accountId: { type: integer }
+        entryType: { type: string, enum: [recharge, deduct, refund, adjust] }
+        amountMicro: { type: integer, description: signed micro-credits }
+        balanceAfterMicro: { type: integer }
+        idempotencyKey: { type: string }
+        refType: { type: string }
+        refId: { type: string }
+        remark: { type: string }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        createdAt: { type: string, format: date-time }
+        virtualKeyId: { type: integer }
+        model: { type: string }
+        promptTokens: { type: integer }
+        completionTokens: { type: integer }
+        latencyMs: { type: integer }
+        statusCode: { type: integer }
+        attemptsTotal: { type: integer }
+        providerAttempts:
+          type: array
+          description: failover trail
+          items:
+            type: object
+            properties:
+              providerId: { type: integer }
+              status: { type: integer }
+              err: { type: string }
+              latencyMs: { type: integer }
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe (no auth)
+      security: []
+      responses: { "200": { description: alive } }
+  /readyz:
+    get:
+      summary: Readiness probe — DB + Redis pings, 503 while draining (no auth)
+      security: []
+      responses:
+        "200": { description: ready }
+        "503": { description: not ready / draining }
+
+  /ai/gateway/key:
+    post:
+      summary: Create a virtual key (plaintext sk-vk-* returned ONCE)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, providerId]
+              properties:
+                name: { type: string }
+                providerId: { type: integer }
+                tenantId: { type: integer, description: 0 = default tenant }
+                projectRefId: { type: integer, description: inherits the project quota template when quotas are unset }
+                dailyTokenQuota: { type: integer }
+                hourlyTokenQuota: { type: integer }
+                hourlyReqQuota: { type: integer }
+                maxConcurrency: { type: integer }
+                allowedModels: { type: array, items: { type: string } }
+                expiresAt: { type: string, format: date-time }
+      responses: { "200": { description: created — data.plainKey shown once } }
+    put:
+      summary: Update key configuration
+      responses: { "200": { description: updated } }
+    delete:
+      summary: Revoke (soft-delete) a key
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: revoked } }
+  /ai/gateway/key/list:
+    get:
+      summary: List keys with pagination
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: pageSize, in: query, schema: { type: integer } }
+      responses: { "200": { description: "data.list: VirtualKey[], data.total" } }
+  /ai/gateway/key/stats:
+    get: { summary: Key statistics, responses: { "200": { description: totals } } }
+  /ai/gateway/key/reveal:
+    get:
+      summary: Decrypt and return a key's plaintext (operator action)
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: plaintext } }
+  /ai/gateway/key/status:
+    put: { summary: Enable / disable a key, responses: { "200": { description: updated } } }
+  /ai/gateway/key/quota-config:
+    get: { summary: View key quotas incl. per-model overrides, responses: { "200": { description: config } } }
+    put: { summary: Update quotas + per-model overrides, responses: { "200": { description: updated } } }
+  /ai/gateway/key/quota-usage:
+    get: { summary: Real-time quota window usage, responses: { "200": { description: usage } } }
+
+  /ai/gateway/providers:
+    post:
+      summary: Register an upstream provider (API key AES-encrypted at rest)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseUrl, apiKey]
+              properties:
+                name: { type: string }
+                baseUrl: { type: string }
+                providerType: { type: string, enum: [openai_compatible, anthropic, azure_openai, gemini] }
+                apiKey: { type: string, writeOnly: true }
+                models: { type: array, items: { type: object } }
+                weight: { type: integer }
+                priority: { type: integer }
+      responses: { "200": { description: created } }
+    get:
+      summary: List providers (API keys never serialized)
+      responses:
+        "200":
+          description: providers
+          content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } }
+    put: { summary: Partial update (non-empty apiKey re-encrypts), responses: { "200": { description: updated } } }
+    delete:
+      summary: Soft-delete a provider
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+  /ai/gateway/providers/health:
+    get:
+      summary: Live circuit-breaker state per provider
+      responses: { "200": { description: "data: ProviderHealth[]" } }
+  /ai/gateway/providers/sync-models:
+    post:
+      summary: Pull the upstream /models list into the catalog (openai_compatible only)
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses:
+        "200": { description: refreshed provider }
+        "400": { description: PROVIDER_SYNC_UNSUPPORTED }
+        "502": { description: PROVIDER_SYNC_FAILED }
+
+  /ai/gateway/tenants:
+    post:
+      summary: Create a tenant (a disabled billing-account shell is created too)
+      responses: { "200": { description: created } }
+    get:
+      summary: List tenants with billing summary and key counts
+      responses: { "200": { description: "data: Tenant[]" } }
+  /ai/gateway/projects:
+    post:
+      summary: Create a project under a tenant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, name]
+              properties:
+                tenantId: { type: integer }
+                name: { type: string }
+                description: { type: string }
+      responses: { "200": { description: created } }
+    get:
+      summary: List projects (optionally by tenant)
+      parameters: [{ name: tenantId, in: query, schema: { type: integer } }]
+      responses: { "200": { description: "data: Project[]" } }
+
+  /ai/gateway/billing/recharge:
+    post:
+      summary: Credit a tenant's account (idempotencyKey makes replays safe)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, credits]
+              properties:
+                tenantId: { type: integer }
+                credits: { type: number }
+                idempotencyKey: { type: string }
+                remark: { type: string }
+      responses: { "200": { description: updated account } }
+  /ai/gateway/billing/account:
+    put:
+      summary: Enable billing / set mode, limits, watermark, price table
+      responses: { "200": { description: updated account } }
+  /ai/gateway/billing/ledger:
+    get:
+      summary: Page a tenant's double-entry ledger (newest first)
+      parameters:
+        - { name: tenantId, in: query, schema: { type: integer }, required: true }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: pageSize, in: query, schema: { type: integer } }
+      responses: { "200": { description: "data.list: LedgerEntry[], data.total" } }
+
+  /ai/gateway/stats/overview:
+    get:
+      summary: Usage totals + top models over the last N days (from the daily rollup)
+      parameters:
+        - { name: days, in: query, schema: { type: integer, default: 7 } }
+        - { name: tenantId, in: query, schema: { type: integer } }
+      responses: { "200": { description: totals } }
+  /ai/gateway/stats/timeseries:
+    get:
+      summary: Per-day usage rows for charts
+      parameters:
+        - { name: days, in: query, schema: { type: integer, default: 7 } }
+        - { name: tenantId, in: query, schema: { type: integer } }
+      responses: { "200": { description: rows } }
+
+  /ai/gateway/audit/list:
+    get:
+      summary: Paginate audit logs with filters
+      responses: { "200": { description: "data.list: AuditLog[]" } }
+  /ai/gateway/audit/sessions:
+    get: { summary: Session-grouped audit view, responses: { "200": { description: sessions } } }
+  /ai/gateway/audit/security-overview:
+    get: { summary: PII / error statistics, responses: { "200": { description: stats } } }

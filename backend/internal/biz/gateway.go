@@ -137,6 +137,32 @@ func (uc *GatewayUseCase) CreateVirtualKey(ctx context.Context, req dto.CreateVi
 			vk.TenantID = defTenant.ID
 		}
 	}
+	// 项目配额模板继承（docs/design/04-multi-tenancy-and-auth.md）：
+	// Key 未显式设置任何配额时，从所属项目的 quota_template 继承默认值。
+	if vk.ProjectRefID > 0 &&
+		vk.DailyTokenQuota == 0 && vk.HourlyTokenQuota == 0 && vk.HourlyReqQuota == 0 &&
+		vk.MaxConcurrency == 0 && vk.DailyPointQuota == 0 && vk.HourlyPointQuota == 0 {
+		var project model.AIProject
+		if err := uc.db.WithContext(ctx).First(&project, vk.ProjectRefID).Error; err == nil && len(project.QuotaTemplate) > 0 {
+			var tpl struct {
+				DailyTokenQuota  int64   `json:"dailyTokenQuota"`
+				HourlyTokenQuota int64   `json:"hourlyTokenQuota"`
+				HourlyReqQuota   int64   `json:"hourlyReqQuota"`
+				MaxConcurrency   int     `json:"maxConcurrency"`
+				DailyPointQuota  float64 `json:"dailyPointQuota"`
+				HourlyPointQuota float64 `json:"hourlyPointQuota"`
+			}
+			if json.Unmarshal(project.QuotaTemplate, &tpl) == nil {
+				vk.DailyTokenQuota = tpl.DailyTokenQuota
+				vk.HourlyTokenQuota = tpl.HourlyTokenQuota
+				vk.HourlyReqQuota = tpl.HourlyReqQuota
+				vk.MaxConcurrency = tpl.MaxConcurrency
+				vk.DailyPointQuota = tpl.DailyPointQuota
+				vk.HourlyPointQuota = tpl.HourlyPointQuota
+				uc.logger.Infof("key: 从项目配额模板继承默认配额 projectID=%d", vk.ProjectRefID)
+			}
+		}
+	}
 	if err := uc.db.WithContext(ctx).Create(&vk).Error; err != nil {
 		return dto.CreateVirtualKeyResp{}, err
 	}
@@ -617,44 +643,66 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 
 	client := newProxyClient()
 
-	// 构建故障转移候选列表。命中映射时映射是指令而非提示——不做故障转移。
-	// 详见 docs/design/01-routing-and-lb.md。
+	// 构建故障转移候选列表（docs/design/01-routing-and-lb.md）：
+	//  - 命中映射：映射是指令而非提示——仅当映射显式配置了降级链时才转移；
+	//  - 未命中映射：按 Key 的路由策略在提供同模型的提供方之间排序。
+	ctx, _ = withAttemptTrail(ctx)
 	var candidates []RouteCandidate
 	if mappingActive || uc.router == nil {
 		candidates = []RouteCandidate{{ProviderID: providerID, Model: realModelName}}
-	} else {
-		candidates = uc.router.Candidates(ctx, realModelName, providerID)
-		if len(candidates) > maxUpstreamAttempts {
-			candidates = candidates[:maxUpstreamAttempts]
+		if mappingActive && uc.router != nil {
+			candidates = append(candidates, uc.mappingFallbackCandidates(ctx, key.ID, key.ProviderID, requestedModel)...)
 		}
+	} else {
+		strategy := key.RoutingStrategy
+		if strategy == "" {
+			strategy = StrategyWeighted
+		}
+		candidates = uc.router.Candidates(ctx, realModelName, providerID, strategy)
+	}
+	if len(candidates) > maxUpstreamAttempts {
+		candidates = candidates[:maxUpstreamAttempts]
 	}
 
 	var resp *http.Response
 	var selectedProvider *providerEntry
+	var committedModel string
 	attemptUsed := 0
 	lastStatus := http.StatusBadGateway
 	lastErrMsg := "no upstream candidate available"
 
 	for i, cand := range candidates {
 		attemptUsed = i
+		attemptStart := time.Now()
 		if uc.router != nil && !uc.router.TryPass(ctx, cand.ProviderID) {
 			lastErrMsg = fmt.Sprintf("provider %d circuit open", cand.ProviderID)
+			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "circuit_open"})
 			continue
 		}
 		entry, perr := uc.loadProviderDirect(ctx, cand.ProviderID)
 		if perr != nil {
 			uc.logger.Errorf("AI 网关加载提供方失败 providerID=%d err=%v", cand.ProviderID, perr)
 			lastErrMsg = perr.Error()
+			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "provider_load_failed"})
 			continue
+		}
+
+		// 降级链候选可指定不同的真实模型
+		attemptBody := sendBody
+		if cand.Model != "" && cand.Model != realModelName {
+			attemptBody = replaceModelInBody(body, cand.Model)
+			attemptBody = uc.injectModelExtraParams(ctx, attemptBody, cand.ProviderID, cand.Model)
+			attemptBody = injectStreamUsageOption(attemptBody, isStream)
 		}
 
 		reqCtx, cancelReq := proxyRequestCtx(ctx, isStream, uc.aiConf)
 		// 协议适配层（P2-1）：按提供方方言构建上游请求
-		upstreamReq, err := buildUpstreamRequest(reqCtx, entry, r.Method, openAIPath, sendBody, isStream)
+		upstreamReq, err := buildUpstreamRequest(reqCtx, entry, r.Method, openAIPath, attemptBody, isStream)
 		if err != nil {
 			cancelReq()
 			uc.logger.Errorf("AI 网关构建上游请求失败 provider=%s err=%v", entry.provider.Name, err)
 			lastErrMsg = err.Error()
+			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "build_request_failed"})
 			continue
 		}
 
@@ -666,6 +714,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 			uc.logger.Errorf("AI 网关代理请求失败 provider=%s attempt=%d err=%v", entry.provider.Name, i+1, reqErr)
 			lastErrMsg = reqErr.Error()
+			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: trimErr(reqErr.Error()), LatencyMs: time.Since(attemptStart).Milliseconds()})
 			continue
 		}
 
@@ -682,10 +731,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				entry.provider.Name, attemptResp.StatusCode, i+1)
 			lastStatus = attemptResp.StatusCode
 			lastErrMsg = snippet
+			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Status: attemptResp.StatusCode, Err: trimErr(snippet), LatencyMs: time.Since(attemptStart).Milliseconds()})
 			continue
 		}
 
-		// 提交本次尝试：上报熔断结果
+		// 提交本次尝试：上报熔断结果与延迟
 		if uc.router != nil {
 			switch {
 			case attemptResp.StatusCode == http.StatusUnauthorized || attemptResp.StatusCode == http.StatusForbidden:
@@ -695,12 +745,20 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				uc.router.ReportResult(ctx, cand.ProviderID, AttemptRetryableError)
 			default:
 				uc.router.ReportResult(ctx, cand.ProviderID, AttemptSuccess)
+				uc.router.ReportLatency(ctx, cand.ProviderID, time.Since(attemptStart).Milliseconds())
 			}
 		}
+		recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Status: attemptResp.StatusCode, LatencyMs: time.Since(attemptStart).Milliseconds()})
 		resp = attemptResp
 		selectedProvider = entry
+		if cand.Model != "" {
+			committedModel = cand.Model
+		}
 		defer cancelReq()
 		break
+	}
+	if committedModel != "" && committedModel != realModelName {
+		realModelName = committedModel // 降级链落到了不同的真实模型
 	}
 
 	if resp == nil || selectedProvider == nil {
@@ -729,8 +787,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	promptTokens, completionTokens, cachedTokens := 0, 0, 0
 	respIsStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 
-	if selectedProvider.provider.ProviderType == model.ProviderTypeAnthropic && resp.StatusCode < 300 {
-		// 协议适配（P2-1/P2-3）：Anthropic 响应翻译回 OpenAI 格式，用量归一化。
+	providerDialect := selectedProvider.provider.ProviderType
+	needsTranslation := providerDialect == model.ProviderTypeAnthropic || providerDialect == model.ProviderTypeGemini
+	if needsTranslation && resp.StatusCode < 300 {
+		// 协议适配（P2-1/P2-3）：非 OpenAI 方言的响应翻译回 OpenAI 格式，用量归一化。
 		// 不透传上游响应头（Content-Length/格式均已改变），由翻译层自建。
 		if respIsStream {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -738,12 +798,23 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			w.WriteHeader(http.StatusOK)
 			scanner := bufio.NewScanner(resp.Body)
 			scanner.Buffer(make([]byte, 64<<10), 4<<20)
-			respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
+			if providerDialect == model.ProviderTypeGemini {
+				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateGeminiStream(w, scanner, realModelName)
+			} else {
+				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
+			}
 		} else {
 			raw, _ := io.ReadAll(resp.Body)
-			translated, p, c, cached, terr := anthropicToOpenAIResponse(raw, realModelName)
+			var translated []byte
+			var p, c, cached int
+			var terr error
+			if providerDialect == model.ProviderTypeGemini {
+				translated, p, c, cached, terr = geminiToOpenAIResponse(raw, realModelName)
+			} else {
+				translated, p, c, cached, terr = anthropicToOpenAIResponse(raw, realModelName)
+			}
 			if terr != nil {
-				uc.logger.Errorf("Anthropic 响应翻译失败 provider=%s err=%v", selectedProvider.provider.Name, terr)
+				uc.logger.Errorf("上游响应翻译失败 provider=%s dialect=%s err=%v", selectedProvider.provider.Name, providerDialect, terr)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadGateway)
 				w.Write([]byte(`{"error":{"message":"upstream response translation failed"}}`))
@@ -966,6 +1037,14 @@ func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtua
 
 	entry.SessionID = resolveGatewaySessionID(ctx, uc.rdb, key, reqBody, clientIP)
 
+	// 故障转移轨迹（docs/design/01-routing-and-lb.md）：多次尝试可完整还原
+	if trail := attemptTrailFromCtx(ctx); len(trail) > 0 {
+		entry.AttemptsTotal = len(trail)
+		if raw, jerr := json.Marshal(trail); jerr == nil {
+			entry.ProviderAttempts = raw
+		}
+	}
+
 	piiAction := "none"
 	if info := piiAuditFromCtx(ctx); info != nil {
 		piiAction = info.action
@@ -1086,6 +1165,32 @@ func (uc *GatewayUseCase) resolveExactTargetModel(ctx context.Context, key *mode
 		return "", 0, false, fmt.Errorf("模型\"%s\"不在该 Key 的允许模型列表中，访问被拒绝", requestedModel)
 	}
 	return requestedModel, key.ProviderID, false, nil
+}
+
+// mappingFallbackCandidates parses the matched mapping's explicit fallback
+// chain ([{"providerId":N,"model":"x"}]) into route candidates. A mapping
+// without a chain keeps the "mapping is an instruction" no-failover rule.
+func (uc *GatewayUseCase) mappingFallbackCandidates(ctx context.Context, keyID, keyProviderID uint, requestedModel string) []RouteCandidate {
+	mapping, err := uc.resolveModelMapping(ctx, keyID, keyProviderID, requestedModel)
+	if err != nil || mapping == nil || len(mapping.FallbackChain) == 0 {
+		return nil
+	}
+	var chain []struct {
+		ProviderID uint   `json:"providerId"`
+		Model      string `json:"model"`
+	}
+	if jerr := json.Unmarshal(mapping.FallbackChain, &chain); jerr != nil {
+		uc.logger.Warnf("模型映射降级链配置解析失败 mappingID=%d err=%v", mapping.ID, jerr)
+		return nil
+	}
+	out := make([]RouteCandidate, 0, len(chain))
+	for _, c := range chain {
+		if c.ProviderID == 0 || c.Model == "" {
+			continue
+		}
+		out = append(out, RouteCandidate{ProviderID: c.ProviderID, Model: c.Model})
+	}
+	return out
 }
 
 func (uc *GatewayUseCase) resolveModelMapping(ctx context.Context, keyID, keyProviderID uint, requestedModel string) (*model.AIModelMapping, error) {

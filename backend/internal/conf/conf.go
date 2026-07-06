@@ -53,6 +53,9 @@ type System struct {
 	// When empty the management plane is OPEN — only acceptable behind a
 	// trusted reverse proxy; a startup warning is emitted.
 	AdminToken string `yaml:"admin_token"`
+	// AlertWebhook, when set, receives billing alerts (budget watermark,
+	// grace entry, suspension) as JSON POSTs.
+	AlertWebhook string `yaml:"alert_webhook"`
 }
 
 // ApplyEnvOverrides maps AIGW_* environment variables onto config fields so
@@ -81,6 +84,9 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	}
 	if v := os.Getenv("AIGW_ADMIN_TOKEN"); v != "" {
 		bc.ensureSystem().AdminToken = v
+	}
+	if v := os.Getenv("AIGW_ALERT_WEBHOOK"); v != "" {
+		bc.ensureSystem().AlertWebhook = v
 	}
 }
 

@@ -9,8 +9,8 @@
 ## 功能
 
 - **虚拟 Key 管理** —— 发放 `sk-vk-*` 凭证（AES-256-GCM 加密存储、SHA-256 查找）；轮换上游 Key 无需改动客户端
-- **多供应商路由** —— 加权负载均衡、跨提供方自动重试/故障转移、多实例共享的 Redis 熔断器（[设计](docs/zh-CN/design/01-routing-and-lb.md)）
-- **协议适配** —— OpenAI 兼容客户端可原生调用 Anthropic（完整请求/响应/SSE 翻译）与 Azure OpenAI，用量统一归一化（[设计](docs/zh-CN/design/02-protocol-adapters.md)）
+- **多供应商路由** —— 四种按 Key 路由策略（加权/优先级/最低延迟/最低成本）、自动重试/故障转移、映射级降级链与逐次尝试审计、多实例共享的 Redis 熔断器（[设计](docs/zh-CN/design/01-routing-and-lb.md)）
+- **协议适配** —— OpenAI 兼容客户端可原生调用 Anthropic、Gemini（完整请求/响应/SSE 翻译）与 Azure OpenAI，用量统一归一化（[设计](docs/zh-CN/design/02-protocol-adapters.md)）
 - **多租户** —— 租户→项目→Key 层级，零配置默认租户；按租户/项目/Key/模型的成本归属（[设计](docs/zh-CN/design/04-multi-tenancy-and-auth.md)）
 - **余额计费** —— 按租户可选启用的预付/后付账户、复式流水、代理路径冻结→结算扣减、宽限期停用、预算告警、与上游成本解耦的售价价格表（[设计](docs/zh-CN/design/03-billing-and-monetization.md)）
 - **多维配额** —— 日/小时 Token、请求数、并发槽、积分预算；按模型覆盖；Redis Lua 原子执行
@@ -97,7 +97,7 @@ curl localhost:8080/ai/v1/chat/completions \
 
 ## API 面
 
-- **代理**（`Authorization: Bearer sk-vk-*`）：`GET /ai/v1/models`、`POST /ai/v1/chat/completions`、`POST /ai/v1/embeddings`、`POST /ai/v1/rerank`，其余 `/ai/v1/*` 透传。OpenAI 兼容，长期承诺不做破坏性变更。`providerType: anthropic` / `azure_openai` 的提供方透明翻译。
+- **代理**（`Authorization: Bearer sk-vk-*`）：`GET /ai/v1/models`、`POST /ai/v1/chat/completions`、`POST /ai/v1/embeddings`、`POST /ai/v1/rerank`，其余 `/ai/v1/*` 透传。OpenAI 兼容，长期承诺不做破坏性变更。`providerType: anthropic` / `gemini` / `azure_openai` 的提供方透明翻译。
 - **管理**（`Authorization: Bearer <管理令牌>`）：
   - Key：CRUD 与明文取回、配额配置/用量
   - 提供方：CRUD 与 `GET /ai/gateway/providers/health`（实时熔断状态）
@@ -113,21 +113,21 @@ curl localhost:8080/ai/v1/chat/completions \
 
 - **P0 开源就绪**：加权 LB + 故障转移 + 熔断、指标/探针、管理认证、提供方 Key 加密、多数据库、测试 + CI、compose 栈、控制台 MVP。
 - **P1 商业闭环（核心）**：租户→项目→Key 层级、可选启用的预付/后付余额账户（复式流水 + 冻结→结算扣减）、宽限期停用、预算告警、售价价格表、按日用量归集与报表、规则式 PII 引擎（block/redact/log）。
-- **P2 差异化（核心）**：Anthropic 原生出口适配（含 SSE 流式翻译）与 Azure OpenAI 适配及用量归一化、精确响应缓存与缓存感知计费。
+- **P2 差异化（核心）**：Anthropic 与 Gemini 原生出口适配（含 SSE 流式翻译）、Azure OpenAI 适配及用量归一化、精确响应缓存与缓存感知计费。
+- **补缺一轮**：路由策略 + 降级链 + 延迟 EWMA、提供方模型同步、项目配额模板、计费告警 webhook、`doctor`/`rekey` CLI、OpenAPI 规范、Helm chart、CI 覆盖率门槛 + PostgreSQL 冒烟、控制台管理 UI（Key 创建含一次性明文、提供方表单、用量图表）。
 
 ### 尚未实现（均已有完整设计，见[设计套件](docs/zh-CN/README.md)）
 
 | 领域 | 缺失部分 |
 | --- | --- |
-| 访问控制（[D04](docs/zh-CN/design/04-multi-tenancy-and-auth.md)） | 用户体系 + RBAC（当前唯一主体是管理令牌）、OIDC/SSO、管理查询的租户级隔离 |
-| 路由（[D01](docs/zh-CN/design/01-routing-and-lb.md)） | `least_latency` / `least_cost` 策略、按 Key 选择策略、映射级降级链、主动健康探测、逐次尝试审计 |
-| 计费商业化（[D03](docs/zh-CN/design/03-billing-and-monetization.md)） | 支付网关（Stripe/支付宝/微信）、订阅套餐、发票、webhook/邮件告警通道、项目配额模板继承 |
-| 协议（[D02](docs/zh-CN/design/02-protocol-adapters.md)） | Anthropic Messages 与 Responses API 入口、Gemini / Bedrock 出口适配、Batch 与 Files API 代理 |
-| 安全（[D06](docs/zh-CN/design/06-security-and-guardrails.md)） | 可插拔护栏 checker 链、外部 PII 引擎（gRPC/Presidio）、出向流扫描、审计正文加密、`rekey` CLI |
+| 访问控制（[D04](docs/zh-CN/design/04-multi-tenancy-and-auth.md)） | SSO/OIDC（用户体系按计划跳过——后续直接引入 SSO）、管理查询的租户级隔离 |
+| 路由（[D01](docs/zh-CN/design/01-routing-and-lb.md)） | 主动健康探测（当前仅被动熔断） |
+| 计费商业化（[D03](docs/zh-CN/design/03-billing-and-monetization.md)） | 支付网关（Stripe/支付宝/微信）、订阅套餐、发票、邮件告警通道 |
+| 协议（[D02](docs/zh-CN/design/02-protocol-adapters.md)） | Anthropic Messages 与 Responses API 入口、Bedrock 出口适配（SigV4）、Batch 与 Files API 代理 |
+| 安全（[D06](docs/zh-CN/design/06-security-and-guardrails.md)） | 可插拔护栏 checker 链、外部 PII 引擎（gRPC/Presidio）、出向流扫描、审计正文加密 |
 | 缓存（[D07](docs/zh-CN/design/07-caching-strategies.md)） | 语义缓存（向量后端）、流式响应缓存、缓存清空 API |
 | 可观测性（[D05](docs/zh-CN/design/05-observability.md)） | OpenTelemetry 追踪 |
-| 控制台（[D08](docs/zh-CN/design/08-web-console.md)） | Key 创建/编辑/取回 UI、提供方表单、模型与价格表页面、审计正文/会话视图、系统设置、用量图表、Playwright E2E |
-| 工程化（[D10](docs/zh-CN/design/10-deployment-and-ops.md)） | OpenAPI 规范、CI 覆盖率门槛与 PostgreSQL 矩阵、Helm chart、`doctor` CLI、提供方模型同步 |
+| 控制台（[D08](docs/zh-CN/design/08-web-console.md)） | 模型与价格表页面、审计正文/会话视图、系统设置、Playwright E2E |
 | 面向未来（[D09](docs/zh-CN/design/09-extensibility.md)） | 插件/Hook 机制、事件总线、MCP 网关 |
 
 欢迎贡献——每一行背后都有完整的技术设计。

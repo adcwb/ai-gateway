@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-gateway
+description: Self-hosted OpenAI-compatible AI traffic control plane
+type: application
+version: 0.3.0
+appVersion: "0.3.0"

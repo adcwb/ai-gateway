@@ -1,0 +1,37 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/opscenter/ai-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  metricsPort: 9090
+
+# The gateway is stateless: point it at managed MySQL/PostgreSQL and Redis.
+config:
+  dbDriver: mysql
+  dbDSN: ""            # REQUIRED, e.g. user:pass@tcp(mysql:3306)/ai_gateway?parseTime=True
+  redisAddr: ""        # REQUIRED, e.g. redis:6379
+  redisPassword: ""
+
+secrets:
+  # REQUIRED: exactly 32 bytes; encrypts virtual keys + provider keys at rest
+  encryptionKey: ""
+  # REQUIRED in production: bearer token for /ai/gateway/*
+  adminToken: ""
+  # optional: billing alert webhook URL
+  alertWebhook: ""
+
+resources:
+  requests: { cpu: 250m, memory: 256Mi }
+  limits: { cpu: "1", memory: 512Mi }
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false   # requires the Prometheus Operator CRDs

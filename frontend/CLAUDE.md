@@ -35,6 +35,6 @@ npm run build    # tsc -b && vite build → dist/
 
 ## Current pages vs designed scope
 
-Implemented: Dashboard (key stats, 7-day usage, provider health), Keys (list only), Providers (list + live breaker), Audit (log list), Tenants (list/create tenant+project), Billing (balance, enable/disable, recharge, ledger).
+Implemented: Dashboard (key stats, 7-day usage, daily SVG charts, provider health), Keys (create form with show-once plaintext, enable/disable, reveal, revoke), Providers (create/edit forms for all four dialects, sync-models, delete, live breaker), Audit (log list), Tenants (list/create tenant+project), Billing (balance, enable/disable, recharge, ledger).
 
-Missing vs `docs/design/08-web-console.md`: key **create/edit/reveal/quota UI** (biggest gap — creation is API-only today), provider create/edit forms, model & price-table management page, audit body viewer / sessions / security tabs, settings page, charts (usage timeseries endpoint exists but unplotted), login via user accounts + RBAC-aware navigation, Playwright E2E.
+Missing vs `docs/design/08-web-console.md`: model & price-table management page, audit body viewer / sessions / security tabs, settings page, quota-editing UI on existing keys, SSO login (user system intentionally deferred), Playwright E2E.

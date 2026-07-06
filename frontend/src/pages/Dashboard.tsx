@@ -1,24 +1,27 @@
 import { useEffect, useState } from "react";
-import { api, type KeyStats, type ProviderHealth, type UsageOverview } from "../api/client";
+import { api, type KeyStats, type ProviderHealth, type UsageOverview, type UsagePoint } from "../api/client";
 import { t, type Lang } from "../i18n";
 
 export default function Dashboard({ lang }: { lang: Lang }) {
   const [stats, setStats] = useState<KeyStats | null>(null);
   const [health, setHealth] = useState<ProviderHealth[]>([]);
   const [usage, setUsage] = useState<UsageOverview | null>(null);
+  const [series, setSeries] = useState<UsagePoint[]>([]);
   const [error, setError] = useState("");
 
   const load = async () => {
     setError("");
     try {
-      const [s, h, u] = await Promise.all([
+      const [s, h, u, ts] = await Promise.all([
         api.get<KeyStats>("/ai/gateway/key/stats"),
         api.get<ProviderHealth[]>("/ai/gateway/providers/health"),
         api.get<UsageOverview>("/ai/gateway/stats/overview?days=7"),
+        api.get<UsagePoint[]>("/ai/gateway/stats/timeseries?days=14"),
       ]);
       setStats(s);
       setHealth(h ?? []);
       setUsage(u);
+      setSeries(ts ?? []);
     } catch (e) {
       setError(`${t("loadFailed", lang)}: ${(e as Error).message}`);
     }
@@ -91,6 +94,17 @@ export default function Dashboard({ lang }: { lang: Lang }) {
         </div>
       </div>
 
+      <div className="cards">
+        <MiniBars
+          title={t("usageTrend", lang)}
+          points={series.map((p) => ({ label: p.day.slice(5), value: p.requests }))}
+        />
+        <MiniBars
+          title={t("billedTrend", lang)}
+          points={series.map((p) => ({ label: p.day.slice(5), value: Math.round(p.priceCredits * 100) / 100 }))}
+        />
+      </div>
+
       <h1 style={{ fontSize: 16 }}>{t("providerHealth", lang)}</h1>
       <table>
         <thead>
@@ -124,6 +138,49 @@ export default function Dashboard({ lang }: { lang: Lang }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// MiniBars: dependency-free SVG bar chart for the daily usage rollup.
+function MiniBars({ title, points }: { title: string; points: { label: string; value: number }[] }) {
+  const W = 420;
+  const H = 120;
+  const pad = 4;
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const bw = points.length > 0 ? (W - pad * 2) / points.length : W;
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 320 }}>
+      <div className="label">{title}</div>
+      {points.length === 0 ? (
+        <div className="muted" style={{ marginTop: 8 }}>—</div>
+      ) : (
+        <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`} style={{ marginTop: 6 }}>
+          {points.map((p, i) => {
+            const h = Math.max(2, (p.value / max) * H);
+            return (
+              <g key={p.label + i}>
+                <rect
+                  x={pad + i * bw + 1}
+                  y={H - h}
+                  width={Math.max(2, bw - 3)}
+                  height={h}
+                  rx={2}
+                  fill="var(--accent)"
+                  opacity={0.85}
+                >
+                  <title>{`${p.label}: ${p.value}`}</title>
+                </rect>
+                {points.length <= 16 && (
+                  <text x={pad + i * bw + bw / 2} y={H + 13} fontSize="8" fill="var(--muted)" textAnchor="middle">
+                    {p.label}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      )}
     </div>
   );
 }

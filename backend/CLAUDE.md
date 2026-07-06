@@ -109,4 +109,4 @@ All `configs/config.yaml` keys overridable via `AIGW_*` env vars (`conf.ApplyEnv
 
 ## Known gaps in this package (see root CLAUDE.md "Feature status")
 
-Users/RBAC (admin token is the only principal), routing strategies `least_latency`/`least_cost` + per-key `routing_strategy` + `fallback_chain` column, provider model-sync endpoint, audit per-attempt columns, quota-template inheritance from projects (column exists, not enforced), payment gateways/subscriptions/invoices, inbound Anthropic/Responses endpoints, Gemini/Bedrock adapters, semantic cache, external PII engine, OTel tracing, `rekey`/`doctor` CLI subcommands, audit-body encryption, ES config wiring (client is nil in wire_gen).
+SSO/OIDC (user system intentionally skipped; admin token is the only principal), tenant-scoped management queries, payment gateways/subscriptions/invoices, inbound Anthropic/Responses endpoints, Bedrock adapter (needs SigV4), active health probes, semantic cache, external PII engine, OTel tracing, audit-body encryption, ES config wiring (client is nil in wire_gen).

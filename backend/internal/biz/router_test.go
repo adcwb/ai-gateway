@@ -182,7 +182,7 @@ func TestCandidatesPrimaryFirstAndModelFiltered(t *testing.T) {
 	seedProvider(t, db, 2, "b", 100, 0, "gpt-4o")
 	seedProvider(t, db, 3, "c", 100, 0, "other-model")
 
-	cands := rm.Candidates(ctx, "gpt-4o", 1)
+	cands := rm.Candidates(ctx, "gpt-4o", 1, StrategyWeighted)
 	if len(cands) != 2 {
 		t.Fatalf("want 2 candidates (provider 3 lacks the model), got %d: %+v", len(cands), cands)
 	}
@@ -199,7 +199,7 @@ func TestCandidatesZeroWeightIsDrained(t *testing.T) {
 	seedProvider(t, db, 1, "a", 100, 0, "m")
 	seedProvider(t, db, 2, "b", 0, 0, "m") // drained
 
-	cands := rm.Candidates(context.Background(), "m", 1)
+	cands := rm.Candidates(context.Background(), "m", 1, StrategyWeighted)
 	for _, c := range cands[1:] {
 		if c.ProviderID == 2 {
 			t.Fatal("weight-0 provider must not receive fallback traffic")
@@ -215,7 +215,7 @@ func TestCandidatesPriorityTiersOrdered(t *testing.T) {
 
 	// run repeatedly: tier0 (priority 0) must always precede tier1 among fallbacks
 	for i := 0; i < 20; i++ {
-		cands := rm.Candidates(context.Background(), "m", 1)
+		cands := rm.Candidates(context.Background(), "m", 1, StrategyWeighted)
 		if len(cands) != 3 {
 			t.Fatalf("want 3 candidates, got %d", len(cands))
 		}

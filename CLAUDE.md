@@ -47,20 +47,20 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Capability | Status | Notes / where |
 | --- | --- | --- |
 | Virtual keys, quotas, audit, model mapping, sticky sessions, IP whitelist | ✅ | P0 inherited core |
-| Weighted LB + failover + circuit breaker | ✅ | `biz/router.go`; strategies `least_latency`/`least_cost`, per-key `routing_strategy`, `fallback_chain` column 🔴 (D01) |
+| Weighted LB + failover + circuit breaker + strategies | ✅ | `biz/router.go`: weighted / priority / least_latency (Redis EWMA) / least_cost per key; per-mapping `fallback_chain`; per-attempt audit trail. Active health probes 🔴 (D01) |
 | Metrics `/metrics`, `/healthz`, `/readyz`, Grafana dashboard | ✅ | OTel tracing 🔴 (D05) |
-| Admin-token management auth | ✅ | Users + RBAC, OIDC/SSO 🔴 (D04) |
-| Tenants → projects → keys, default-tenant bootstrap | ✅ | project `quota_template` inheritance 🔴; tenant-scoped list filtering 🔴 (admin token = platform admin) |
-| Balance billing: accounts, ledger, freeze→settle, grace/suspension, budget alerts | ✅ | alert channels = log+metric only (webhook/email 🔴); payment gateways / subscriptions / invoices 🔴 (D03 L4) |
+| Admin-token management auth | ✅ | User system intentionally skipped — SSO/OIDC to be introduced directly (D04) |
+| Tenants → projects → keys, default-tenant bootstrap | ✅ | project `quota_template` inheritance ✅; tenant-scoped list filtering 🔴 (admin token = platform admin) |
+| Balance billing: accounts, ledger, freeze→settle, grace/suspension, budget alerts | ✅ | alert webhook ✅ (`AIGW_ALERT_WEBHOOK`); email channel, payment gateways / subscriptions / invoices 🔴 (D03 L4) |
 | Price tables + multi-currency rates | ✅ | console editor UI 🔴 |
 | Usage daily rollup + stats endpoints | ✅ | console charts for timeseries 🔴 |
 | Rule-based PII engine (block/redact/log) + injection heuristic | ✅ | pluggable checker chain, external engine (gRPC), outbound/stream scanning, audit-body encryption 🔴 (D06) |
-| Protocol adapters | 🟡 | outbound anthropic (incl. SSE) + azure_openai ✅; Gemini/Bedrock, inbound Anthropic Messages & Responses API 🔴 (D02) |
+| Protocol adapters | 🟡 | outbound anthropic + gemini (incl. SSE) + azure_openai ✅; Bedrock, inbound Anthropic Messages & Responses API 🔴 (D02) |
 | Exact response cache + hit billing | ✅ | semantic cache 🔴 (D07); streaming responses are not cached (by design, revisit) |
-| Web console | 🟡 | 6 read/manage pages ✅; key create/edit/reveal UI, provider forms, pricing page, audit body/session views, settings, E2E 🔴 (D08) |
-| Multi-DB (mysql/postgres/sqlite) | ✅ | CI matrix runs single-DB; PG job 🔴 |
-| Deployment | 🟡 | compose ✅; Helm/K8s, `doctor`/`rekey` CLI 🔴 (D10) |
-| Engineering | 🟡 | tests+CI+release ✅; OpenAPI spec (`api/openapi.yaml`), CI coverage gate, provider `sync-models` 🔴 |
+| Web console | 🟡 | key create/manage + provider forms + usage charts ✅; price-table page, audit body/session views, settings, Playwright E2E 🔴 (D08) |
+| Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
+| Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
+| Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |
 | MCP gateway, plugins/hooks, event bus, Batch/Files APIs | 🔴 | P3 (D09) |
 
 When picking up new work, prefer closing a 🟡 row before starting a 🔴 one, and check the corresponding `docs/design/` document first — most decisions are already made there.

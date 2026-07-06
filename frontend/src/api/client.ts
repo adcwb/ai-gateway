@@ -183,3 +183,19 @@ export interface Project {
 
 export const MICRO = 1_000_000;
 export const credits = (micro: number) => (micro / MICRO).toFixed(4);
+
+export interface CreateKeyResp {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  plainKey: string;
+}
+
+export interface UsagePoint {
+  day: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  costCredits: number;
+  priceCredits: number;
+}

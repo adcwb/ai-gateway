@@ -9,8 +9,8 @@ A self-hosted, OpenAI-compatible **AI traffic control plane** written in Go. One
 ## Features
 
 - **Virtual key management** — issue `sk-vk-*` credentials (AES-256-GCM at rest, SHA-256 lookup); rotate upstream keys without touching clients
-- **Multi-provider routing** — weighted load balancing, automatic retry/failover across providers, Redis-backed circuit breaker shared by all instances ([design](docs/design/01-routing-and-lb.md))
-- **Protocol adapters** — call Anthropic natively (full request/response/SSE translation) and Azure OpenAI from OpenAI-compatible clients, with normalized usage accounting ([design](docs/design/02-protocol-adapters.md))
+- **Multi-provider routing** — four per-key strategies (weighted / priority / least-latency / least-cost), automatic retry/failover with per-mapping fallback chains and a per-attempt audit trail, Redis-backed circuit breaker shared by all instances ([design](docs/design/01-routing-and-lb.md))
+- **Protocol adapters** — call Anthropic, Gemini (full request/response/SSE translation) and Azure OpenAI from OpenAI-compatible clients, with normalized usage accounting ([design](docs/design/02-protocol-adapters.md))
 - **Multi-tenancy** — tenant → project → key hierarchy with a zero-config default tenant; cost attribution per tenant/project/key/model ([design](docs/design/04-multi-tenancy-and-auth.md))
 - **Balance billing** — opt-in prepaid/postpaid accounts per tenant, double-entry ledger, freeze→settle deduction on the proxy path, grace-period suspension, budget alerts, sell-side price tables decoupled from upstream cost ([design](docs/design/03-billing-and-monetization.md))
 - **Multi-dimensional quotas** — daily/hourly tokens, request counts, concurrency slots, credit budgets; per-model overrides; atomic Redis Lua enforcement
@@ -97,7 +97,7 @@ Tables are created automatically on startup (additive GORM auto-migration).
 
 ## API surface
 
-- **Proxy** (`Authorization: Bearer sk-vk-*`): `GET /ai/v1/models`, `POST /ai/v1/chat/completions`, `POST /ai/v1/embeddings`, `POST /ai/v1/rerank`, plus passthrough for other `/ai/v1/*` routes. OpenAI-compatible; no breaking changes as a standing guarantee. Providers registered with `providerType: anthropic` or `azure_openai` are translated transparently.
+- **Proxy** (`Authorization: Bearer sk-vk-*`): `GET /ai/v1/models`, `POST /ai/v1/chat/completions`, `POST /ai/v1/embeddings`, `POST /ai/v1/rerank`, plus passthrough for other `/ai/v1/*` routes. OpenAI-compatible; no breaking changes as a standing guarantee. Providers registered with `providerType: anthropic`, `gemini` or `azure_openai` are translated transparently.
 - **Management** (`Authorization: Bearer <admin token>`):
   - Keys: CRUD + reveal, quota config/usage
   - Providers: CRUD + `GET /ai/gateway/providers/health` (live breaker state)
@@ -113,21 +113,21 @@ Implemented against the [roadmap](docs/03-roadmap.md):
 
 - **P0 — open-source ready**: weighted LB + failover + circuit breaking, metrics/probes, admin auth, encrypted provider keys, multi-DB, tests + CI, compose stack, console MVP.
 - **P1 — commercial loop (core)**: tenant→project→key hierarchy, opt-in prepaid/postpaid balance accounts with double-entry ledger and freeze→settle deduction, grace-period suspension, budget alerts, sell-side price tables, daily usage attribution + reports, rule-based PII engine (block/redact/log).
-- **P2 — differentiation (core)**: native Anthropic outbound adapter (incl. SSE stream translation) and Azure OpenAI adapter with normalized usage, exact-match response cache with cache-aware billing.
+- **P2 — differentiation (core)**: native Anthropic and Gemini outbound adapters (incl. SSE stream translation) and Azure OpenAI adapter with normalized usage, exact-match response cache with cache-aware billing.
+- **Gap-closing round**: routing strategies + fallback chains + latency EWMA, provider model sync, project quota templates, billing alert webhook, `doctor`/`rekey` CLI, OpenAPI spec, Helm chart, CI coverage gate + PostgreSQL smoke, console management UI (key creation with show-once secret, provider forms, usage charts).
 
 ### Not yet implemented (designed — see the [design suite](docs/README.md))
 
 | Area | Missing pieces |
 | --- | --- |
-| Access control ([D04](docs/design/04-multi-tenancy-and-auth.md)) | User accounts + RBAC (admin token is the single principal today), OIDC/SSO, tenant-scoped management queries |
-| Routing ([D01](docs/design/01-routing-and-lb.md)) | `least_latency` / `least_cost` strategies, per-key strategy selection, per-mapping fallback chains, active health probes, per-attempt audit trail |
-| Billing commerce ([D03](docs/design/03-billing-and-monetization.md)) | Payment gateways (Stripe/Alipay/WeChat), subscription plans, invoices, webhook/email alert channels, project quota-template inheritance |
-| Protocols ([D02](docs/design/02-protocol-adapters.md)) | Inbound Anthropic Messages & OpenAI Responses endpoints, Gemini / Bedrock outbound adapters, Batch & Files API proxying |
-| Security ([D06](docs/design/06-security-and-guardrails.md)) | Pluggable guardrail checker chain, external PII engine (gRPC/Presidio), output-stream scanning, audit-body encryption, `rekey` CLI |
+| Access control ([D04](docs/design/04-multi-tenancy-and-auth.md)) | SSO/OIDC (user system intentionally skipped — SSO will be introduced directly), tenant-scoped management queries |
+| Routing ([D01](docs/design/01-routing-and-lb.md)) | Active health probes (passive breaker only today) |
+| Billing commerce ([D03](docs/design/03-billing-and-monetization.md)) | Payment gateways (Stripe/Alipay/WeChat), subscription plans, invoices, email alert channel |
+| Protocols ([D02](docs/design/02-protocol-adapters.md)) | Inbound Anthropic Messages & OpenAI Responses endpoints, Bedrock outbound adapter (SigV4), Batch & Files API proxying |
+| Security ([D06](docs/design/06-security-and-guardrails.md)) | Pluggable guardrail checker chain, external PII engine (gRPC/Presidio), output-stream scanning, audit-body encryption |
 | Caching ([D07](docs/design/07-caching-strategies.md)) | Semantic cache (vector-backed), caching of streaming responses, cache flush API |
 | Observability ([D05](docs/design/05-observability.md)) | OpenTelemetry tracing |
-| Console ([D08](docs/design/08-web-console.md)) | Key create/edit/reveal UI, provider forms, model & price-table pages, audit body/session viewers, settings, usage charts, Playwright E2E |
-| Engineering ([D10](docs/design/10-deployment-and-ops.md)) | OpenAPI spec, CI coverage gate + PostgreSQL matrix job, Helm chart, `doctor` CLI, provider model-sync |
+| Console ([D08](docs/design/08-web-console.md)) | Model & price-table pages, audit body/session viewers, settings page, Playwright E2E |
 | Future ([D09](docs/design/09-extensibility.md)) | Plugin/hook system, event bus, MCP gateway |
 
 Contributions welcome — each row has a full technical design behind it.

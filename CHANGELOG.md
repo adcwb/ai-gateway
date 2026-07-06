@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added — gap-closing round (routing, Gemini, ops tooling, console management)
+
+- **Routing completed** (D01): per-key `routing_strategy` (`weighted` / `priority` / `least_latency` / `least_cost`), Redis-shared latency EWMA fed by successful attempts, explicit per-mapping `fallback_chain` (mapped requests may now fail over along a configured chain, possibly to a different real model), and a per-attempt audit trail (`attempts_total` + `provider_attempts` JSON on every audit row).
+- **Gemini outbound adapter** (D02): OpenAI→`generateContent` translation (systemInstruction lifting, functionCall/functionResponse tool mapping), response + SSE stream translation with normalized usage (incl. cached tokens).
+- **Provider model sync**: `POST /ai/gateway/providers/sync-models?id=` pulls the upstream `/models` catalog (openai_compatible), preserving `is_default` flags.
+- **Project quota templates** (D04): keys created without explicit quotas inherit the project's `quota_template`.
+- **Billing alert webhook** (D03): `system.alert_webhook` / `AIGW_ALERT_WEBHOOK` receives budget-watermark, grace and suspension events as JSON POSTs.
+- **CLI subcommands** (D10): `server doctor` (config/DB/Redis checks) and `server rekey -old -new` (transactional re-encryption of virtual keys + provider keys).
+- **Engineering**: management-API OpenAPI spec (`api/openapi.yaml`), Helm chart (`deploy/helm/ai-gateway`: deployment, probes, secrets, PDB, optional ServiceMonitor), CI coverage regression gate and a PostgreSQL+Redis boot smoke job asserting `/readyz` and admin-auth enforcement.
+- **Console**: key creation form (provider/tenant/quota/strategy) with show-once plaintext modal, enable/disable/reveal/revoke actions; provider create/edit forms (all four dialects, write-only API key), sync-models and delete actions; dependency-free SVG daily-usage charts (requests, billed credits).
+
+Per the current plan, the user system stays out — SSO/OIDC will be introduced directly later (D04).
+
 ### Added — P1 "Commercial Loop" (core) + P2 "Differentiation" (core)
 
 **P1 — tenancy, billing, attribution, PII** (`docs/design/03,04,06`):

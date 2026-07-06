@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "ai-gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {{- include "ai-gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "ai-gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: metrics, containerPort: 9090 }
+          env:
+            - { name: AIGW_DB_DRIVER, value: {{ .Values.config.dbDriver | quote }} }
+            - { name: AIGW_REDIS_ADDR, value: {{ required "config.redisAddr is required" .Values.config.redisAddr | quote }} }
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-secrets
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources: {{- toYaml .Values.resources | nindent 12 }}

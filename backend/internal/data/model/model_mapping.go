@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -17,6 +18,10 @@ type AIModelMapping struct {
 	RealModelID  uint   `gorm:"column:real_model_id;not null;index" json:"realModelId"`
 	IsEnabled    bool   `gorm:"column:is_enabled;default:true" json:"isEnabled"`
 	Description  string `gorm:"column:description;type:varchar(256)" json:"description"`
+
+	// FallbackChain: ordered [{"providerId":1,"model":"x"}] tried after the
+	// mapped target on retryable failure (docs/design/01-routing-and-lb.md).
+	FallbackChain datatypes.JSON `gorm:"column:fallback_chain;type:json" json:"fallbackChain"`
 
 	RealModel *AIModelItem `gorm:"foreignKey:RealModelID" json:"realModel,omitempty"`
 }
