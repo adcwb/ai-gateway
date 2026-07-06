@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, type Provider, type ProviderHealth } from "../api/client";
+import { useState } from "react";
+import { api, useAsync, type Provider, type ProviderHealth } from "../api/client";
 import { t, type Lang } from "../i18n";
+import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
 
 const emptyForm = {
   id: 0,
@@ -14,30 +15,20 @@ const emptyForm = {
 };
 
 export default function Providers({ lang }: { lang: Lang }) {
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [health, setHealth] = useState<Map<number, ProviderHealth>>(new Map());
-  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
+  const [actionError, setActionError] = useState("");
 
-  const load = async () => {
-    setError("");
-    try {
-      const [list, h] = await Promise.all([
-        api.get<Provider[]>("/ai/gateway/providers"),
-        api.get<ProviderHealth[]>("/ai/gateway/providers/health"),
-      ]);
-      setProviders(list ?? []);
-      setHealth(new Map((h ?? []).map((x) => [x.providerId, x])));
-    } catch (e) {
-      setError(`${t("loadFailed", lang)}: ${(e as Error).message}`);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data, loading, error, refresh } = useAsync<[Provider[], ProviderHealth[]]>(
+    (s) =>
+      Promise.all([
+        api.get<Provider[]>("/ai/gateway/providers", { signal: s }),
+        api.get<ProviderHealth[]>("/ai/gateway/providers/health", { signal: s }),
+      ]),
+    [],
+  );
+  const providers = data?.[0] ?? [];
+  const healthMap = new Map((data?.[1] ?? []).map((h) => [h.providerId, h]));
 
   const startEdit = (p?: Provider) => {
     if (p) {
@@ -64,42 +55,34 @@ export default function Providers({ lang }: { lang: Lang }) {
       .map((s) => s.trim())
       .filter(Boolean)
       .map((name, i) => ({ name, is_default: i === 0 }));
+    const body = {
+      name: form.name,
+      baseUrl: form.baseUrl,
+      providerType: form.providerType,
+      apiKey: form.apiKey || "",
+      models,
+      weight: form.weight,
+      priority: form.priority,
+    };
     try {
       if (form.id) {
-        await api.put("/ai/gateway/providers", {
-          id: form.id,
-          name: form.name,
-          baseUrl: form.baseUrl,
-          providerType: form.providerType,
-          apiKey: form.apiKey || "",
-          models,
-          weight: form.weight,
-          priority: form.priority,
-        });
+        await api.put("/ai/gateway/providers", { id: form.id, ...body });
       } else {
-        await api.post("/ai/gateway/providers", {
-          name: form.name,
-          baseUrl: form.baseUrl,
-          providerType: form.providerType,
-          apiKey: form.apiKey,
-          models,
-          weight: form.weight,
-          priority: form.priority,
-        });
+        await api.post("/ai/gateway/providers", body);
       }
       setShowForm(false);
-      load();
+      refresh();
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
     }
   };
 
   const syncModels = async (p: Provider) => {
     try {
       await api.post(`/ai/gateway/providers/sync-models?id=${p.id}`);
-      load();
+      refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     }
   };
 
@@ -107,110 +90,163 @@ export default function Providers({ lang }: { lang: Lang }) {
     if (!window.confirm(t("confirmDeleteProvider", lang))) return;
     try {
       await api.del(`/ai/gateway/providers?id=${p.id}`);
-      load();
+      refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     }
   };
 
-  const selStyle: React.CSSProperties = {
-    width: "100%", background: "#0d0f15", color: "inherit",
-    border: "1px solid var(--border)", borderRadius: 8, padding: "10px 8px",
-  };
+  const cols = 7;
+  const showError = actionError || (error ? `${t("loadFailed", lang)}: ${error}` : "");
 
   return (
     <div>
-      <div className="toolbar">
-        <h1>{t("providers", lang)}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="ghost" onClick={load}>{t("refresh", lang)}</button>
-          <button onClick={() => startEdit()}>{t("addProvider", lang)}</button>
+      <div className="topbar">
+        <div className="titles">
+          <div className="eyebrow">{t("navOperate", lang)}</div>
+          <h1>{t("providers", lang)}</h1>
+        </div>
+        <div className="actions flex gap-8">
+          <button className="ghost sm" onClick={refresh}>
+            <Icon name="refresh" size={14} /> {t("refresh", lang)}
+          </button>
+          <button onClick={() => startEdit()}>
+            <Icon name="plus" size={14} /> {t("addProvider", lang)}
+          </button>
         </div>
       </div>
-      {error && <p className="error-text">{error}</p>}
+
+      {showError && (
+        <ErrorBanner
+          message={showError}
+          onRetry={() => {
+            setActionError("");
+            refresh();
+          }}
+        />
+      )}
 
       {showForm && (
-        <form className="card" style={{ marginBottom: 16 }} onSubmit={submit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <label>
-              <div className="label">{t("name", lang)}</div>
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        <form className="card mb-16" onSubmit={submit}>
+          <div className="form-grid">
+            <label className="field">
+              <div className="field-label">{t("name", lang)}</div>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
             </label>
-            <label>
-              <div className="label">{t("baseUrl", lang)}</div>
-              <input value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} required placeholder="https://api.openai.com/v1" />
+            <label className="field">
+              <div className="field-label">{t("baseUrl", lang)}</div>
+              <input
+                value={form.baseUrl}
+                onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                required
+                placeholder="https://api.openai.com/v1"
+              />
             </label>
-            <label>
-              <div className="label">{t("providerType", lang)}</div>
-              <select value={form.providerType} onChange={(e) => setForm({ ...form, providerType: e.target.value })} style={selStyle}>
+            <label className="field">
+              <div className="field-label">{t("providerType", lang)}</div>
+              <select value={form.providerType} onChange={(e) => setForm({ ...form, providerType: e.target.value })}>
                 <option value="openai_compatible">openai_compatible</option>
                 <option value="anthropic">anthropic</option>
                 <option value="azure_openai">azure_openai</option>
                 <option value="gemini">gemini</option>
               </select>
             </label>
-            <label>
-              <div className="label">{t("apiKeyWriteOnly", lang)}</div>
-              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} required={!form.id} />
+            <label className="field">
+              <div className="field-label">{t("apiKeyWriteOnly", lang)}</div>
+              <input
+                type="password"
+                value={form.apiKey}
+                onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                required={!form.id}
+                placeholder={form.id ? "••••••  (leave blank to keep)" : ""}
+              />
             </label>
-            <label>
-              <div className="label">{t("weight", lang)}</div>
+            <label className="field">
+              <div className="field-label">{t("weight", lang)}</div>
               <input type="number" min="0" value={form.weight} onChange={(e) => setForm({ ...form, weight: Number(e.target.value) || 0 })} />
             </label>
-            <label>
-              <div className="label">{t("priority", lang)}</div>
+            <label className="field">
+              <div className="field-label">{t("priority", lang)}</div>
               <input type="number" min="0" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) || 0 })} />
             </label>
-            <label style={{ gridColumn: "1 / span 3" }}>
-              <div className="label">{t("modelsCsv", lang)}</div>
+            <label className="field span-3">
+              <div className="field-label">{t("modelsCsv", lang)}</div>
               <input value={form.modelsCsv} onChange={(e) => setForm({ ...form, modelsCsv: e.target.value })} placeholder="gpt-4o-mini, gpt-4o" />
             </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="submit">{t("save", lang)}</button>
+            <div className="form-actions">
+              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
               <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
             </div>
           </div>
         </form>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>{t("name", lang)}</th>
-            <th>{t("baseUrl", lang)}</th>
-            <th>{t("providerType", lang)}</th>
-            <th>{t("state", lang)}</th>
-            <th>{t("weight", lang)}</th>
-            <th>{t("models", lang)}</th>
-            <th>{t("actions", lang)}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {providers.length === 0 && <tr><td colSpan={7} className="muted">{t("empty", lang)}</td></tr>}
-          {providers.map((p) => {
-            const h = health.get(p.id);
-            return (
-              <tr key={p.id}>
-                <td>{p.name}</td>
-                <td className="muted">{p.baseUrl}</td>
-                <td className="muted">{p.providerType}</td>
-                <td>
-                  {h ? (<><span className={`dot ${h.state}`} />{t(`breaker_${h.state}`, lang)}</>) : "—"}
-                </td>
-                <td>{p.weight} / P{p.priority}</td>
-                <td className="muted" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {(p.models ?? []).map((m) => m.name).join(", ")}
-                </td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <button className="ghost" onClick={() => startEdit(p)}>{t("editProvider", lang)}</button>{" "}
-                  <button className="ghost" onClick={() => syncModels(p)}>{t("syncModels", lang)}</button>{" "}
-                  <button className="ghost" style={{ color: "var(--err)" }} onClick={() => remove(p)}>{t("deleteProvider", lang)}</button>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t("name", lang)}</th>
+              <th>{t("baseUrl", lang)}</th>
+              <th>{t("providerType", lang)}</th>
+              <th>{t("state", lang)}</th>
+              <th>{t("weight", lang)}</th>
+              <th>{t("models", lang)}</th>
+              <th>{t("actions", lang)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && providers.length === 0 ? (
+              <TableSkeleton cols={cols} />
+            ) : providers.length === 0 ? (
+              <tr>
+                <td colSpan={cols}>
+                  <EmptyState
+                    icon="providers"
+                    title={t("emptyProviders", lang)}
+                    sub={t("emptyProvidersSub", lang)}
+                    action={
+                      <button onClick={() => startEdit()}>
+                        <Icon name="plus" size={14} /> {t("addProvider", lang)}
+                      </button>
+                    }
+                  />
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : (
+              providers.map((p) => {
+                const h = healthMap.get(p.id);
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td className="muted mono"><span className="truncate">{p.baseUrl}</span></td>
+                    <td className="muted mono">{p.providerType}</td>
+                    <td>
+                      {h ? (
+                        <><span className={`dot ${h.state}`} />{t(`breaker_${h.state}`, lang)}</>
+                      ) : <span className="faint">—</span>}
+                    </td>
+                    <td className="mono">{p.weight} <span className="faint">/ P{p.priority}</span></td>
+                    <td className="muted">
+                      <span className="truncate">{(p.models ?? []).map((m) => m.name).join(", ") || "—"}</span>
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button className="ghost sm" onClick={() => startEdit(p)}>{t("editProvider", lang)}</button>
+                        <button className="ghost sm" onClick={() => syncModels(p)}>
+                          <Icon name="sync" size={13} /> {t("syncModels", lang)}
+                        </button>
+                        <button className="danger sm" onClick={() => remove(p)}>
+                          <Icon name="trash" size={13} /> {t("deleteProvider", lang)}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

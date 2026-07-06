@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { clearToken, getToken } from "./api/client";
 import { getLang, setLang, t, type Lang } from "./i18n";
+import { Icon, type IconName } from "./components/ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Keys from "./pages/Keys";
@@ -9,6 +10,18 @@ import Providers from "./pages/Providers";
 import Audit from "./pages/Audit";
 import Tenants from "./pages/Tenants";
 import Billing from "./pages/Billing";
+
+interface NavItem { to: string; key: string; icon: IconName; end?: boolean }
+
+// Grouped so the eye lands on operate → manage → observe.
+const NAV: NavItem[] = [
+  { to: "/", key: "dashboard", icon: "dashboard", end: true },
+  { to: "/keys", key: "keys", icon: "key" },
+  { to: "/providers", key: "providers", icon: "providers" },
+  { to: "/tenants", key: "tenants", icon: "tenants" },
+  { to: "/billing", key: "billing", icon: "billing" },
+  { to: "/audit", key: "audit", icon: "audit" },
+];
 
 export default function App() {
   const [lang, setLangState] = useState<Lang>(getLang());
@@ -33,20 +46,46 @@ export default function App() {
 
   return (
     <div className="layout">
-      <nav className="sidebar">
-        <div className="brand">⛩ ai-gateway</div>
-        <NavLink to="/" end>{t("dashboard", lang)}</NavLink>
-        <NavLink to="/keys">{t("keys", lang)}</NavLink>
-        <NavLink to="/providers">{t("providers", lang)}</NavLink>
-        <NavLink to="/audit">{t("audit", lang)}</NavLink>
-        <NavLink to="/tenants">{t("tenants", lang)}</NavLink>
-        <NavLink to="/billing">{t("billing", lang)}</NavLink>
+      <nav className="sidebar" aria-label="Primary">
+        <div className="brand">
+          <Icon name="torii" size={22} className="brand-mark" />
+          <div>
+            <div className="brand-name">ai-gateway</div>
+            <div className="brand-sub">Console</div>
+          </div>
+        </div>
+
+        <div className="nav-eyebrow">{t("navOperate", lang)}</div>
+        {NAV.slice(0, 3).map((n) => (
+          <NavLink key={n.to} to={n.to} end={n.end}>
+            <Icon name={n.icon} size={16} /> {t(n.key, lang)}
+          </NavLink>
+        ))}
+        <div className="nav-eyebrow">{t("navManage", lang)}</div>
+        {NAV.slice(3, 5).map((n) => (
+          <NavLink key={n.to} to={n.to}>
+            <Icon name={n.icon} size={16} /> {t(n.key, lang)}
+          </NavLink>
+        ))}
+        <div className="nav-eyebrow">{t("navObserve", lang)}</div>
+        {NAV.slice(5).map((n) => (
+          <NavLink key={n.to} to={n.to}>
+            <Icon name={n.icon} size={16} /> {t(n.key, lang)}
+          </NavLink>
+        ))}
+
         <div className="spacer" />
         <div className="foot">
-          <button className="ghost" onClick={toggleLang}>{lang === "en" ? "中文" : "EN"}</button>
-          <button className="ghost" onClick={logout}>{t("logout", lang)}</button>
+          <button className="iconbtn" onClick={toggleLang} title={lang === "en" ? "中文" : "English"}>
+            <Icon name="globe" size={15} />
+            <span className="mono" style={{ fontSize: 11 }}>{lang === "en" ? "EN" : "中"}</span>
+          </button>
+          <button className="iconbtn" onClick={logout} aria-label={t("logout", lang)} title={t("logout", lang)}>
+            <Icon name="logout" size={15} />
+          </button>
         </div>
       </nav>
+
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard lang={lang} />} />

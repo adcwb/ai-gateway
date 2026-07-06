@@ -1,43 +1,38 @@
 import { useEffect, useState } from "react";
-import { api, credits, type Project, type Tenant } from "../api/client";
+import { api, credits, useAsync, type Project, type Tenant } from "../api/client";
 import { t, type Lang } from "../i18n";
+import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
 
 export default function Tenants({ lang }: { lang: Lang }) {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [error, setError] = useState("");
   const [newTenant, setNewTenant] = useState("");
   const [newProject, setNewProject] = useState("");
   const [projectTenant, setProjectTenant] = useState(0);
+  const [actionError, setActionError] = useState("");
 
-  const load = async () => {
-    setError("");
-    try {
-      const [ts, ps] = await Promise.all([
-        api.get<Tenant[]>("/ai/gateway/tenants"),
-        api.get<Project[]>("/ai/gateway/projects"),
-      ]);
-      setTenants(ts ?? []);
-      setProjects(ps ?? []);
-      if (ts?.length && projectTenant === 0) setProjectTenant(ts[0].id);
-    } catch (e) {
-      setError(`${t("loadFailed", lang)}: ${(e as Error).message}`);
-    }
-  };
+  const { data, loading, error, refresh } = useAsync<[Tenant[], Project[]]>(
+    (s) =>
+      Promise.all([
+        api.get<Tenant[]>("/ai/gateway/tenants", { signal: s }),
+        api.get<Project[]>("/ai/gateway/projects", { signal: s }),
+      ]),
+    [],
+  );
+  const tenants = data?.[0] ?? [];
+  const projects = data?.[1] ?? [];
 
+  // Default the project-creator's tenant picker to the first tenant, once.
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (projectTenant === 0 && tenants[0]) setProjectTenant(tenants[0].id);
+  }, [tenants, projectTenant]);
 
   const createTenant = async () => {
     if (!newTenant.trim()) return;
     try {
       await api.post("/ai/gateway/tenants", { name: newTenant.trim(), displayName: newTenant.trim() });
       setNewTenant("");
-      load();
+      refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     }
   };
 
@@ -46,77 +41,125 @@ export default function Tenants({ lang }: { lang: Lang }) {
     try {
       await api.post("/ai/gateway/projects", { tenantId: projectTenant, name: newProject.trim() });
       setNewProject("");
-      load();
+      refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setActionError((e as Error).message);
     }
   };
 
+  const cols = 7;
+  const showError = actionError || (error ? `${t("loadFailed", lang)}: ${error}` : "");
+
   return (
     <div>
-      <div className="toolbar">
-        <h1>{t("tenants", lang)}</h1>
-        <button className="ghost" onClick={load}>{t("refresh", lang)}</button>
+      <div className="topbar">
+        <div className="titles">
+          <div className="eyebrow">{t("navManage", lang)}</div>
+          <h1>{t("tenants", lang)}</h1>
+        </div>
+        <div className="actions">
+          <button className="ghost sm" onClick={refresh}>
+            <Icon name="refresh" size={14} /> {t("refresh", lang)}
+          </button>
+        </div>
       </div>
-      {error && <p className="error-text">{error}</p>}
+
+      {showError && (
+        <ErrorBanner
+          message={showError}
+          onRetry={() => {
+            setActionError("");
+            refresh();
+          }}
+        />
+      )}
 
       <div className="cards">
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card" style={{ flex: 1, minWidth: 280 }}>
           <div className="label">{t("createTenant", lang)}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <input value={newTenant} onChange={(e) => setNewTenant(e.target.value)} placeholder={t("name", lang)} />
-            <button onClick={createTenant}>{t("submit", lang)}</button>
+          <div className="flex gap-8" style={{ marginTop: 6 }}>
+            <input
+              value={newTenant}
+              onChange={(e) => setNewTenant(e.target.value)}
+              placeholder={t("name", lang)}
+              onKeyDown={(e) => e.key === "Enter" && createTenant()}
+            />
+            <button onClick={createTenant}>
+              <Icon name="plus" size={14} /> {t("submit", lang)}
+            </button>
           </div>
         </div>
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card" style={{ flex: 1, minWidth: 320 }}>
           <div className="label">{t("createProject", lang)}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <select
-              value={projectTenant}
-              onChange={(e) => setProjectTenant(Number(e.target.value))}
-              style={{ background: "#0d0f15", color: "inherit", border: "1px solid var(--border)", borderRadius: 8, padding: "0 8px" }}
-            >
-              {tenants.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          <div className="flex gap-8" style={{ marginTop: 6 }}>
+            <select value={projectTenant} onChange={(e) => setProjectTenant(Number(e.target.value))}>
+              {tenants.map((x) => (
+                <option key={x.id} value={x.id}>{x.name}</option>
+              ))}
             </select>
-            <input value={newProject} onChange={(e) => setNewProject(e.target.value)} placeholder={t("name", lang)} />
-            <button onClick={createProject}>{t("submit", lang)}</button>
+            <input
+              value={newProject}
+              onChange={(e) => setNewProject(e.target.value)}
+              placeholder={t("name", lang)}
+              onKeyDown={(e) => e.key === "Enter" && createProject()}
+            />
+            <button onClick={createProject}>
+              <Icon name="plus" size={14} /> {t("submit", lang)}
+            </button>
           </div>
         </div>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>{t("name", lang)}</th>
-            <th>{t("keyCount", lang)}</th>
-            <th>{t("billingEnabled", lang)}</th>
-            <th>{t("balance", lang)}</th>
-            <th>{t("status", lang)}</th>
-            <th>{t("project", lang)}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tenants.length === 0 && <tr><td colSpan={7} className="muted">{t("empty", lang)}</td></tr>}
-          {tenants.map((x) => (
-            <tr key={x.id}>
-              <td>{x.id}</td>
-              <td>{x.displayName || x.name}</td>
-              <td>{x.keyCount}</td>
-              <td>
-                <span className={`pill ${x.account?.isEnabled ? "on" : "off"}`}>
-                  {x.account?.isEnabled ? "on" : "off"}
-                </span>
-              </td>
-              <td>{x.account ? `${credits(x.account.balanceMicro)} ${x.account.currency}` : "—"}</td>
-              <td>{x.account ? t(`status_${x.account.status}`, lang) : "—"}</td>
-              <td className="muted">
-                {projects.filter((p) => p.tenantId === x.id).map((p) => p.name).join(", ") || "—"}
-              </td>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>{t("name", lang)}</th>
+              <th>{t("keyCount", lang)}</th>
+              <th>{t("billingEnabled", lang)}</th>
+              <th>{t("balance", lang)}</th>
+              <th>{t("status", lang)}</th>
+              <th>{t("project", lang)}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {loading && tenants.length === 0 ? (
+              <TableSkeleton cols={cols} />
+            ) : tenants.length === 0 ? (
+              <tr>
+                <td colSpan={cols}>
+                  <EmptyState icon="tenants" title={t("emptyTenants", lang)} sub={t("emptyTenantsSub", lang)} />
+                </td>
+              </tr>
+            ) : (
+              tenants.map((x) => {
+                const st = x.account?.status;
+                const tone = st === "active" ? "on" : st === "grace" ? "warn" : "err";
+                return (
+                  <tr key={x.id}>
+                    <td className="id">{x.id}</td>
+                    <td>{x.displayName || x.name}</td>
+                    <td className="mono">{x.keyCount}</td>
+                    <td>
+                      <span className={`pill ${x.account?.isEnabled ? "on" : "off"}`}>
+                        {x.account?.isEnabled ? "on" : "off"}
+                      </span>
+                    </td>
+                    <td className="mono">
+                      {x.account ? `${credits(x.account.balanceMicro)} ${x.account.currency}` : "—"}
+                    </td>
+                    <td>{x.account ? <span className={`pill ${tone}`}>{t(`status_${st}`, lang)}</span> : "—"}</td>
+                    <td className="muted">
+                      {projects.filter((p) => p.tenantId === x.id).map((p) => p.name).join(", ") || "—"}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

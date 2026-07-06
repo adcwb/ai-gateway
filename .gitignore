@@ -24,3 +24,7 @@ backend/internal/console/dist/*
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# local configs with real credentials
+backend/configs/config.local.yaml
+backend/configs/*.local.yaml

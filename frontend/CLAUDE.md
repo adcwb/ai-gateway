@@ -4,16 +4,23 @@ Guidance for working on the web console. Repo-wide context lives in the root `CL
 
 ## Stack & structure
 
-Vite + React 18 + TypeScript (strict) + react-router-dom. **Deliberately no UI framework yet** — plain CSS in `src/styles.css` (dark theme, CSS variables); discuss before adding any dependency. Design reference: `docs/design/08-web-console.md` (the full design targets shadcn/ui + TanStack Query; migrate when the console grows past the current page set).
+Vite + React 18 + TypeScript (strict) + react-router-dom. **Deliberately no UI framework** — the design system is hand-rolled ("Signal Terminal": ink canvas, signal-teal accent, monospace data) in `src/styles.css` + `src/components/ui.tsx`; discuss before adding any dependency. Design reference: `docs/design/08-web-console.md`.
 
 ```text
 src/
-├── api/client.ts    # fetch wrapper + ALL shared API types; envelope + admin-token auth
-├── i18n.ts          # bilingual dictionary (en/zh) — dependency-free t(key, lang)
-├── App.tsx          # auth guard, sidebar shell, routes
-├── styles.css       # the entire design system
-└── pages/           # Dashboard, Keys, Providers, Audit, Tenants, Billing, Login
+├── api/client.ts        # fetch wrapper + ALL shared API types; envelope + admin-token auth;
+│                        #   useAsync<T>() — race-safe fetching with optional polling
+├── i18n.ts              # bilingual dictionary (en/zh) — dependency-free t(key, lang)
+├── App.tsx              # auth guard, grouped sidebar shell (nav eyebrows), routes
+├── styles.css           # the entire design system (CSS variables, cards, tables, forms)
+├── components/
+│   ├── ui.tsx           # Icon, Skeleton/TableSkeleton, Spinner, Live, EmptyState,
+│   │                    #   ErrorBanner, StatCard/StatValue, AreaChart, HttpStatus
+│   └── ErrorBoundary.tsx
+└── pages/               # Dashboard, Keys, Providers, Audit, Tenants, Billing, Login
 ```
+
+Note: `index.html` preloads Inter/JetBrains Mono from Google Fonts — inside the embedded single-binary console this fails gracefully to the system font stack (offline deployments lose the custom fonts, nothing breaks).
 
 ## Build & dev
 
@@ -31,7 +38,7 @@ npm run build    # tsc -b && vite build → dist/
 3. **All API types live in `api/client.ts`** — mirror backend DTO JSON shapes (camelCase). Money is integer micro-credits: render with the `credits()` helper (÷ 1_000_000), never raw.
 4. Envelope handling is centralized in `request<T>()`: success `{code: 0, data, msg}`, error `{code: REASON, msg}` with the HTTP status from kerrors — components only `try/catch` and show `(e as Error).message`.
 5. Auth = admin token in localStorage sent as `Authorization: Bearer`; `Login.tsx` validates it against `GET /ai/gateway/key/stats`. There is no user system yet (see gaps).
-6. Follow the shared list-page pattern: toolbar (title + refresh) → error line → `.cards` stats → `<table>`; reuse `.pill`, `.dot.{closed,half_open,open}`, `.muted`, `.error-text` classes.
+6. Follow the shared list-page pattern: `.topbar` (eyebrow + title + actions) → `ErrorBanner` → `.cards` stats → `.table-wrap > table` with `TableSkeleton` while loading and `EmptyState` when empty; fetch through `useAsync` (pass its `signal` to `api.*`), never ad-hoc `useEffect` fetching.
 
 ## Current pages vs designed scope
 

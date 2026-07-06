@@ -95,6 +95,8 @@ Open `http://localhost:8080/console/` and sign in with the admin token.
 
 Tables are created automatically on startup (additive GORM auto-migration).
 
+> **Local development:** keep real credentials out of git — copy `config.yaml` to `configs/config.local.yaml` (gitignored) and run `./server -conf configs/config.local.yaml`, or use the `AIGW_*` env vars.
+
 ## API surface
 
 - **Proxy** (`Authorization: Bearer sk-vk-*`): `GET /ai/v1/models`, `POST /ai/v1/chat/completions`, `POST /ai/v1/embeddings`, `POST /ai/v1/rerank`, plus passthrough for other `/ai/v1/*` routes. OpenAI-compatible; no breaking changes as a standing guarantee. Providers registered with `providerType: anthropic`, `gemini` or `azure_openai` are translated transparently.

@@ -1,6 +1,8 @@
 // Thin client for the ai-gateway management API.
 // The console is a pure client of the documented public API — zero private
 // endpoints (docs/design/08-web-console.md).
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { DependencyList, Dispatch, SetStateAction } from "react";
 
 const TOKEN_KEY = "aigw_admin_token";
 
@@ -55,13 +57,88 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  get: <T>(path: string, init?: RequestInit) => request<T>(path, init),
   post: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: "POST", body: JSON.stringify(data ?? {}) }),
   put: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: "PUT", body: JSON.stringify(data ?? {}) }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
+
+// ---------------------------------------------------------------------------
+// useAsync: race-safe data fetching with optional polling.
+// Replaces the repeated load() + setInterval + manual fetch boilerplate.
+// AbortController cancels in-flight requests on unmount / dep change so stale
+// responses never overwrite fresh ones; polling ticks are skipped while the
+// document is hidden.
+// ---------------------------------------------------------------------------
+
+export interface UseAsyncResult<T> {
+  data: T | null;
+  loading: boolean;
+  error: string;
+  /** Stable error code from the API envelope (e.g. "BILLING_ACCOUNT_NOT_FOUND")
+   *  when the request failed with an ApiError; "" otherwise. Lets pages tailor
+   *  their empty/error state on a known code instead of matching the message. */
+  errorCode: string;
+  refresh: () => void;
+  setData: Dispatch<SetStateAction<T | null>>;
+}
+
+export function useAsync<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  deps: DependencyList,
+  opts: { intervalMs?: number; skip?: boolean } = {},
+): UseAsyncResult<T> {
+  const { intervalMs, skip = false } = opts;
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(!skip);
+  const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
+  const [nonce, setNonce] = useState(0);
+  const reqId = useRef(0);
+
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    if (skip) {
+      setLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    const myId = ++reqId.current;
+    setLoading(true);
+    fn(ac.signal)
+      .then((val) => {
+        if (myId !== reqId.current) return;
+        setData(val);
+        setError("");
+        setErrorCode("");
+      })
+      .catch((e: unknown) => {
+        if (myId !== reqId.current || ac.signal.aborted) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setErrorCode(e instanceof ApiError ? String(e.code) : "");
+      })
+      .finally(() => {
+        if (myId !== reqId.current) return;
+        setLoading(false);
+      });
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, nonce, skip]);
+
+  useEffect(() => {
+    if (!intervalMs || skip) return;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      setNonce((n) => n + 1);
+    }, intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs, skip]);
+
+  return { data, loading, error, errorCode, refresh, setData };
+}
 
 // ---------------------------------------------------------------------------
 // Typed shapes for the endpoints the console consumes

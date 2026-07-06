@@ -95,6 +95,8 @@ curl localhost:8080/ai/v1/chat/completions \
 
 数据表在启动时自动创建（GORM 加法式自动迁移）。
 
+> **本地开发：** 不要把真实凭证提交进 git——将 `config.yaml` 复制为 `configs/config.local.yaml`（已 gitignore）后用 `./server -conf configs/config.local.yaml` 启动，或使用 `AIGW_*` 环境变量。
+
 ## API 面
 
 - **代理**（`Authorization: Bearer sk-vk-*`）：`GET /ai/v1/models`、`POST /ai/v1/chat/completions`、`POST /ai/v1/embeddings`、`POST /ai/v1/rerank`，其余 `/ai/v1/*` 透传。OpenAI 兼容，长期承诺不做破坏性变更。`providerType: anthropic` / `gemini` / `azure_openai` 的提供方透明翻译。

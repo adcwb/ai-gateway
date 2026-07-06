@@ -577,7 +577,9 @@ func (bm *BillingManager) UsageOverview(ctx context.Context, tenantID uint, days
 		Requests   int64  `json:"requests"`
 		PriceMicro int64  `json:"priceMicro"`
 	}
-	var topModels []modelRow
+	// Initialize as a non-nil slice so an empty result serializes to `[]`
+	// instead of JSON `null`; the console reads topModels as an array.
+	topModels := []modelRow{}
 	mq := bm.db.WithContext(ctx).Model(&model.AIUsageDaily{}).Where("day >= ?", since)
 	if tenantID > 0 {
 		mq = mq.Where("tenant_id = ?", tenantID)

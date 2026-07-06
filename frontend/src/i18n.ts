@@ -22,6 +22,10 @@ const dict: Record<string, { en: string; zh: string }> = {
     zh: "输入 system.admin_token（AIGW_ADMIN_TOKEN）配置的管理令牌。",
   },
   adminToken: { en: "Admin token", zh: "管理令牌" },
+  loginTagline: {
+    en: "Keys, providers, billing, and live usage — one operator console for the ai-gateway.",
+    zh: "Key、提供方、计费与实时用量——ai-gateway 的统一运维控制台。",
+  },
   logout: { en: "Sign out", zh: "退出" },
   dashboard: { en: "Dashboard", zh: "仪表盘" },
   keys: { en: "Virtual Keys", zh: "虚拟 Key" },
@@ -122,6 +126,26 @@ const dict: Record<string, { en: string; zh: string }> = {
   usageTrend: { en: "Requests / day", zh: "每日请求数" },
   billedTrend: { en: "Billed credits / day", zh: "每日计费积分" },
   routingStrategy: { en: "Routing", zh: "路由策略" },
+  navOperate: { en: "Operate", zh: "操作" },
+  navManage: { en: "Manage", zh: "管理" },
+  navObserve: { en: "Observe", zh: "观察" },
+  live: { en: "live", zh: "实时" },
+  retry: { en: "Retry", zh: "重试" },
+  emptyKeys: { en: "No virtual keys yet", zh: "还没有虚拟 Key" },
+  emptyKeysSub: { en: "Create your first key to start routing requests.", zh: "创建第一个 Key，即可开始转发请求。" },
+  emptyProviders: { en: "No providers configured", zh: "尚未配置提供方" },
+  emptyProvidersSub: { en: "Add an upstream provider to begin routing.", zh: "添加一个上游提供方即可开始路由。" },
+  emptyAudit: { en: "No requests logged", zh: "暂无请求记录" },
+  emptyAuditSub: { en: "Audit entries appear here once traffic flows through the gateway.", zh: "流量经过网关后，审计记录会出现在这里。" },
+  emptyTenants: { en: "No tenants yet", zh: "还没有租户" },
+  emptyTenantsSub: { en: "Create a tenant to isolate keys and billing.", zh: "创建租户以隔离 Key 与计费。" },
+  emptyLedger: { en: "No ledger entries", zh: "暂无流水" },
+  emptyLedgerSub: { en: "Recharges and usage charges will show up here.", zh: "充值与用量扣费会显示在这里。" },
+  noBillingAccount: { en: "No billing account", zh: "该租户尚无计费账户" },
+  noBillingAccountSub: {
+    en: "This tenant was created outside the console. Enable billing to provision an account and start tracking ledger entries.",
+    zh: "该租户在控制台之外创建。请先启用计费以创建账户，之后流水会显示在这里。",
+  },
 };
 
 export function t(key: string, lang: Lang): string {
