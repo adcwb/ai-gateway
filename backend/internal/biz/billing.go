@@ -230,21 +230,21 @@ func (bm *BillingManager) ReleaseFreeze(ctx context.Context, h *FreezeHandle) {
 
 // PriceMicro computes the sell-side micro-credit price of a usage triple for
 // an account (its price table + currency rate).
-func (bm *BillingManager) PriceMicro(ctx context.Context, acct *model.AIBillingAccount, providerID uint, modelName string, prompt, completion, cacheRead int) int64 {
+func (bm *BillingManager) PriceMicro(ctx context.Context, acct *model.AIBillingAccount, providerID uint, modelName string, prompt, completion, cacheRead, cacheWrite int) int64 {
 	if acct == nil {
 		return 0
 	}
 	entry := getSellPriceEntry(ctx, bm.db, bm.logger, acct.PriceTableID, providerID, modelName)
 	rate := getRatePerCredit(ctx, bm.db, bm.rdb, acct.Currency)
-	_, micro, _ := calcCredits(entry, prompt, completion, cacheRead, rate)
+	_, micro, _ := calcCredits(entry, prompt, completion, cacheRead, cacheWrite, rate)
 	return micro
 }
 
 // CostMicro computes the upstream cost in micro-credits (for margin reports).
-func (bm *BillingManager) CostMicro(ctx context.Context, currency string, providerID uint, modelName string, prompt, completion, cacheRead int) int64 {
+func (bm *BillingManager) CostMicro(ctx context.Context, currency string, providerID uint, modelName string, prompt, completion, cacheRead, cacheWrite int) int64 {
 	entry := getModelPriceEntry(ctx, bm.db, bm.logger, providerID, modelName)
 	rate := getRatePerCredit(ctx, bm.db, bm.rdb, currency)
-	_, micro, _ := calcCredits(entry, prompt, completion, cacheRead, rate)
+	_, micro, _ := calcCredits(entry, prompt, completion, cacheRead, cacheWrite, rate)
 	return micro
 }
 
@@ -256,7 +256,7 @@ func (bm *BillingManager) estimateMicro(ctx context.Context, acct *model.AIBilli
 		maxTokens = billFreezeFloor
 	}
 	promptEst := len(body) / 4
-	return bm.PriceMicro(ctx, acct, providerID, modelName, promptEst, maxTokens, 0)
+	return bm.PriceMicro(ctx, acct, providerID, modelName, promptEst, maxTokens, 0, 0)
 }
 
 func extractMaxTokens(body []byte) int {

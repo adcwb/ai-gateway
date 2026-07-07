@@ -117,20 +117,20 @@ Implemented against the [roadmap](docs/03-roadmap.md):
 - **P1 — commercial loop (core)**: tenant→project→key hierarchy, opt-in prepaid/postpaid balance accounts with double-entry ledger and freeze→settle deduction, grace-period suspension, budget alerts, sell-side price tables, daily usage attribution + reports, rule-based PII engine (block/redact/log).
 - **P2 — differentiation (core)**: native Anthropic and Gemini outbound adapters (incl. SSE stream translation) and Azure OpenAI adapter with normalized usage, exact-match response cache with cache-aware billing.
 - **Gap-closing round**: routing strategies + fallback chains + latency EWMA, provider model sync, project quota templates, billing alert webhook, `doctor`/`rekey` CLI, OpenAPI spec, Helm chart, CI coverage gate + PostgreSQL smoke, console management UI (key creation with show-once secret, provider forms, usage charts).
+- **P2/P3 follow-on round**: active health probes, OpenTelemetry tracing, console model/price-table/audit-body/session/security/settings pages + Playwright E2E, SSO/OIDC + 4-role RBAC + admin API keys, pluggable guardrail checker chain (external gRPC checker included) + audit-body encryption, semantic response cache (pluggable vector backend + Redis/RediSearch), MCP gateway (tool-call proxying + governance).
+- **Protocol-surface round**: inbound Anthropic Messages (`/anthropic/v1/messages`) and OpenAI Responses (`/ai/v1/responses`) entrances with full SSE streaming translation, Bedrock outbound adapter for Claude models (hand-implemented SigV4), Batch + Files API proxy for openai_compatible providers with deferred usage settlement.
 
 ### Not yet implemented (designed — see the [design suite](docs/README.md))
 
 | Area | Missing pieces |
 | --- | --- |
-| Access control ([D04](docs/design/04-multi-tenancy-and-auth.md)) | SSO/OIDC (user system intentionally skipped — SSO will be introduced directly), tenant-scoped management queries |
-| Routing ([D01](docs/design/01-routing-and-lb.md)) | Active health probes (passive breaker only today) |
+| Access control ([D04](docs/design/04-multi-tenancy-and-auth.md)) | Tenant-scoped filtering across every list/read endpoint (RBAC today only gates the named state-changing actions) |
+| Protocols ([D02](docs/design/02-protocol-adapters.md)) | Bedrock support beyond Anthropic Claude models (Titan/Llama/Mistral/Nova), Responses API `previous_response_id` chaining/`store:true` (no server-side state persistence), console UI for provider `adapter_config`/bedrock credentials |
 | Billing commerce ([D03](docs/design/03-billing-and-monetization.md)) | Payment gateways (Stripe/Alipay/WeChat), subscription plans, invoices, email alert channel |
-| Protocols ([D02](docs/design/02-protocol-adapters.md)) | Inbound Anthropic Messages & OpenAI Responses endpoints, Bedrock outbound adapter (SigV4), Batch & Files API proxying |
-| Security ([D06](docs/design/06-security-and-guardrails.md)) | Pluggable guardrail checker chain, external PII engine (gRPC/Presidio), output-stream scanning, audit-body encryption |
-| Caching ([D07](docs/design/07-caching-strategies.md)) | Semantic cache (vector-backed), caching of streaming responses, cache flush API |
-| Observability ([D05](docs/design/05-observability.md)) | OpenTelemetry tracing |
-| Console ([D08](docs/design/08-web-console.md)) | Model & price-table pages, audit body/session viewers, settings page, Playwright E2E |
-| Future ([D09](docs/design/09-extensibility.md)) | Plugin/hook system, event bus, MCP gateway |
+| Security ([D06](docs/design/06-security-and-guardrails.md)) | Streaming outbound guardrail scanning, standalone `prompt_injection`/`topic_fence` checkers, external-checker result caching |
+| Caching ([D07](docs/design/07-caching-strategies.md)) | Cache-flush admin endpoint (TTL is the only invalidation today), console UI for cache/embedding settings |
+| Console ([D08](docs/design/08-web-console.md)) | Fallback-chain drag editor, guardrail-chain builder |
+| Extensibility ([D09](docs/design/09-extensibility.md)) | Generic hook dispatcher + event bus + plugins; the MCP gateway itself ships protocol proxy + tool governance, but batched JSON-RPC, GET/SSE server push, a dedicated tool-call quota dimension, and a console UI for MCP servers/tool whitelists remain; Batch/Files proxy ships for openai_compatible providers only (no Anthropic Message Batches translation), console UI API-only |
 
 Contributions welcome — each row has a full technical design behind it.
 

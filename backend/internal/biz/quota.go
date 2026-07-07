@@ -381,7 +381,7 @@ func (q *QuotaManager) CommitTokens(ctx context.Context, key *model.AIVirtualKey
 
 // CommitCredits calculates and records Credits usage after a request completes.
 func (q *QuotaManager) CommitCredits(ctx context.Context, key *model.AIVirtualKey,
-	providerID uint, modelName string, promptTokens, completionTokens, cacheReadTokens int) (credits float64, priceCNY float64) {
+	providerID uint, modelName string, promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens int) (credits float64, priceCNY float64) {
 
 	price := getModelPriceEntry(ctx, q.db, q.logger, providerID, modelName)
 	if price.noPricing {
@@ -390,7 +390,7 @@ func (q *QuotaManager) CommitCredits(ctx context.Context, key *model.AIVirtualKe
 
 	ratePerCredit := getCNYRatePerCredit(ctx, q.db, q.rdb)
 	var microCredits int64
-	credits, microCredits, priceCNY = calcCredits(price, promptTokens, completionTokens, cacheReadTokens, ratePerCredit)
+	credits, microCredits, priceCNY = calcCredits(price, promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, ratePerCredit)
 
 	ml := effectiveLimits(key, modelName)
 	if (ml.dailyPoint > 0 || ml.hourlyPoint > 0) && microCredits > 0 {

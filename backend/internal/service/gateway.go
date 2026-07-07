@@ -337,3 +337,35 @@ func (s *GatewayService) ProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	s.uc.ProxyRequest(r.Context(), key, body, w, r)
 }
+
+// AnthropicMessagesProxy handles POST /anthropic/v1/messages — the Anthropic
+// Messages API inbound codec (docs/design/02-protocol-adapters.md).
+func (s *GatewayService) AnthropicMessagesProxy(w http.ResponseWriter, r *http.Request) {
+	key := biz.VirtualKeyFromRequest(r)
+	if key == nil {
+		failWith(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		failWith(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	s.uc.ProxyAnthropicMessages(r.Context(), key, body, w, r)
+}
+
+// ResponsesProxy handles POST /ai/v1/responses — the OpenAI Responses API
+// inbound codec (docs/design/02-protocol-adapters.md).
+func (s *GatewayService) ResponsesProxy(w http.ResponseWriter, r *http.Request) {
+	key := biz.VirtualKeyFromRequest(r)
+	if key == nil {
+		failWith(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		failWith(w, http.StatusBadRequest, "failed to read request body")
+		return
+	}
+	s.uc.ProxyResponses(r.Context(), key, body, w, r)
+}

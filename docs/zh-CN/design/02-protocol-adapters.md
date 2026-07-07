@@ -161,3 +161,14 @@ type InboundCodec interface {
 - 各适配器的 golden-file 测试：录制的提供方 fixture（请求/响应/流转录）→ 断言精确的 IR 与精确的重编码输出。fixture 即契约；提供方 API 漂移体现为 fixture diff。
 - 跨方言矩阵测试：每个入口编解码 × 每个出口适配器，跑一段规范会话（文本 + 工具调用 + 流式），断言归一化 `Usage` 相等。
 - 快速路径压测：证明 OpenAI→openai_compatible 相对适配层引入前的基线零新增分配/延迟。
+
+## 实现说明（ADR 补记）
+
+本轮把这份文档里的矩阵全部落地——入站 Anthropic Messages（`/anthropic/v1/messages`）、OpenAI Responses（`/ai/v1/responses`），出站 bedrock——但内部形态与上文设计有出入。
+
+- **IR 决策**：没有新建 `internal/biz/protocol/` 包或独立的 `ChatRequest`/`ChatResponse` 结构体。`internal/biz/protocol.go` 自己的文档注释早已断言"内部表示就是 OpenAI Chat Completions 的线上格式"，且现有每个出站方言（anthropic、gemini、azure_openai）都已经围绕它转，测试覆盖也很完整。与其推倒重来引入一套结构体 IR，新的入站编解码器只在两端做翻译（请求解码、响应/流编码），复用同一个 OpenAI 形状枢纽。这让快速路径保证天然成立——OpenAI 入→openai_compatible 出这条路径完全没被本轮改动碰过——也让"新入站 × 既有出站"保持在 N+M 而不是 N×M 的重写。代价：这个 IR 偏 OpenAI 形状而非中立联合体；可接受，因为计费/审计从来只关心 `internal/biz/credits.go` 已经建模的那些字段。
+- **响应重编码**：没有做 `InboundCodec` 接口 + 注册表，而是给每条新入站路由包一层轻量的 `http.ResponseWriter` 包装器（`anthropicResponseWriter`/`responsesResponseWriter`）：非流式响应整体缓冲、在 `Close()` 时翻译（成功响应和网关自己写的 `{"error":...}` 错误体都靠一个结构性判断分派，所以 PII 拦截、限流、计费 402、全部候选失败 502 等既有错误路径全部自动获得正确的目标方言形状）；流式响应通过一个翻译 goroutine 管道转发。`ProxyRequest` 本身完全没有改动。
+- **Bedrock 范围**：只支持 Bedrock 原生 Invoke API 上的 Anthropic Claude 模型，不是上面表格里泛化的"任意模型"场景。其他 Bedrock 模型族的 invoke body 形状互不兼容；后续要加是有边界的追加工作（多一个分支 + 一套 fixture），不是重新设计。SigV4 手写实现（`internal/biz/bedrock/`，对 `biz` 无依赖），没有引入 aws-sdk-go；测试里用一份独立编写的 Python 参考实现做交叉校验，而不是在 Go 里把同一套算术又推导一遍。
+- **Bedrock 凭证**：`AIProvider.APIKey`（每种方言都在用的那一个 AES-256-GCM 加密字符串列）对 `bedrock` 类型 provider 存一段 JSON `{"accessKeyId","secretAccessKey","sessionToken"}`，没有新增专用列。Region 不是密钥，放在 `adapter_config` 里，和 anthropic/azure 自己的方言设置一样。
+- **缓存写/推理 token**：`anthropicToOpenAIResponse`/`translateAnthropicStream` 现在也会带出 `cache_creation_input_tokens`（之前解析了但静默丢弃），`calcCredits` 通过 `AIModelItem.CacheWritePricePerMillion`（这个价格列从本设计最初版本就有，但从未被读取过）计费——这是一个真实缺口而不是顺手加戏，因为一旦有真实的 Anthropic Messages 客户端，这个缺口立刻用户可见。`reasoning_tokens` 是 `AIGatewayAuditLog` 上新增的纯展示型列（推理 token 在计费口径上已经是 `completion_tokens` 的子集，和 OpenAI 自己的用量形状一致）。
+- **明确排除的范围**：Responses API 的 `previous_response_id` 串联与 `store:true` 直接拒绝（400），而不是假装支持——网关没有服务端 Responses 状态持久化，这把本设计原本的 open question 明确判定为"不支持"而不是继续含糊。Responses/Anthropic 的流式事件覆盖只做了最常用的子集，不是两套 API 各自完整事件分类法的全量对齐。`adapter_config`/bedrock 凭证的控制台 UI 仍是仅 API 可用。

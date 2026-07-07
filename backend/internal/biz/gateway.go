@@ -638,7 +638,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 			var hitPrice int64
 			if freeze != nil && freeze.Account != nil {
-				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, entry.ProviderID, realModelName, entry.Prompt, entry.Completion, entry.CacheRead)
+				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, entry.ProviderID, realModelName, entry.Prompt, entry.Completion, entry.CacheRead, 0)
 				hitPrice = cacheHitPriceMicro(fullPrice, cacheCfg)
 				uc.billing.Settle(ctx, freeze, requestID, hitPrice, "", "cache-hit model="+realModelName)
 			}
@@ -667,7 +667,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 			var hitPrice int64
 			if freeze != nil && freeze.Account != nil {
-				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, semHit.ProviderID, realModelName, semHit.Prompt, semHit.Completion, semHit.CacheRead)
+				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, semHit.ProviderID, realModelName, semHit.Prompt, semHit.Completion, semHit.CacheRead, 0)
 				hitPrice = cacheHitPriceMicro(fullPrice, cacheCfg)
 				uc.billing.Settle(ctx, freeze, requestID, hitPrice, "", "cache-hit model="+realModelName)
 			}
@@ -872,11 +872,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 
 	var respBody []byte
 	var streamErr string
-	promptTokens, completionTokens, cachedTokens := 0, 0, 0
+	promptTokens, completionTokens, cachedTokens, cacheCreationTokens := 0, 0, 0, 0
 	respIsStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 
 	providerDialect := selectedProvider.provider.ProviderType
-	needsTranslation := providerDialect == model.ProviderTypeAnthropic || providerDialect == model.ProviderTypeGemini
+	needsTranslation := providerDialect == model.ProviderTypeAnthropic || providerDialect == model.ProviderTypeGemini || providerDialect == model.ProviderTypeBedrock
 	if needsTranslation && resp.StatusCode < 300 {
 		// 协议适配（P2-1/P2-3）：非 OpenAI 方言的响应翻译回 OpenAI 格式，用量归一化。
 		// 不透传上游响应头（Content-Length/格式均已改变），由翻译层自建。
@@ -886,20 +886,24 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			w.WriteHeader(http.StatusOK)
 			scanner := bufio.NewScanner(resp.Body)
 			scanner.Buffer(make([]byte, 64<<10), 4<<20)
-			if providerDialect == model.ProviderTypeGemini {
+			switch providerDialect {
+			case model.ProviderTypeGemini:
 				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateGeminiStream(w, scanner, realModelName)
-			} else {
-				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
+			case model.ProviderTypeBedrock:
+				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateBedrockStream(w, resp.Body, realModelName)
+			default:
+				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
 			}
 		} else {
 			raw, _ := io.ReadAll(resp.Body)
 			var translated []byte
-			var p, c, cached int
+			var p, c, cached, cacheCreated int
 			var terr error
-			if providerDialect == model.ProviderTypeGemini {
+			switch providerDialect {
+			case model.ProviderTypeGemini:
 				translated, p, c, cached, terr = geminiToOpenAIResponse(raw, realModelName)
-			} else {
-				translated, p, c, cached, terr = anthropicToOpenAIResponse(raw, realModelName)
+			default: // anthropic, bedrock (bedrock Claude invoke sync body IS native Anthropic Messages JSON)
+				translated, p, c, cached, cacheCreated, terr = anthropicToOpenAIResponse(raw, realModelName)
 			}
 			if terr != nil {
 				uc.logger.Errorf("上游响应翻译失败 provider=%s dialect=%s err=%v", selectedProvider.provider.Name, providerDialect, terr)
@@ -918,7 +922,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				}
 				w.Write(translated)
 				respBody = translated
-				promptTokens, completionTokens, cachedTokens = p, c, cached
+				promptTokens, completionTokens, cachedTokens, cacheCreationTokens = p, c, cached, cacheCreated
 			}
 		}
 	} else if respIsStream {
@@ -928,13 +932,15 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 		}
 		w.WriteHeader(resp.StatusCode)
-		respBody, promptTokens, completionTokens, cachedTokens, streamErr = streamProxy(w, resp.Body)
+		var reasoningTokens int
+		respBody, promptTokens, completionTokens, cachedTokens, reasoningTokens, streamErr = streamProxy(w, resp.Body)
 		if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
-			p, c, cached := parseUsageFromBody(respBody)
+			p, c, cached, reasoning := parseUsageFromBody(respBody)
 			if p > 0 || c > 0 {
-				promptTokens, completionTokens, cachedTokens = p, c, cached
+				promptTokens, completionTokens, cachedTokens, reasoningTokens = p, c, cached, reasoning
 			}
 		}
+		ctx = withReasoningTokens(ctx, reasoningTokens)
 	} else {
 		if isStream {
 			uc.logger.Warnf("请求声明流式但上游返回非 SSE Content-Type contentType=%s provider=%s",
@@ -942,7 +948,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		}
 
 		raw, _ := io.ReadAll(resp.Body)
-		promptTokens, completionTokens, cachedTokens = parseUsageFromBody(raw)
+		var reasoningTokens int
+		promptTokens, completionTokens, cachedTokens, reasoningTokens = parseUsageFromBody(raw)
+		ctx = withReasoningTokens(ctx, reasoningTokens)
 		finalBody := raw
 		blocked := false
 		if resp.StatusCode < 300 {
@@ -987,7 +995,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		attribute.Int("gen_ai.usage.cache_read_tokens", cachedTokens),
 	))
 	uc.quota.CommitTokens(settleCtx, key, realModelName, promptTokens, completionTokens)
-	openaiCredits, openaiPrice := uc.quota.CommitCredits(settleCtx, key, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+	openaiCredits, openaiPrice := uc.quota.CommitCredits(settleCtx, key, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens, cacheCreationTokens)
 	openaiUpstreamID := resp.Header.Get("x-request-id")
 
 	// 计费结算 + 用量日聚合（P1-3/P1-5）
@@ -996,10 +1004,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		currency := "CNY"
 		if freeze != nil && freeze.Account != nil {
 			currency = freeze.Account.Currency
-			priceMicro = uc.billing.PriceMicro(settleCtx, freeze.Account, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+			priceMicro = uc.billing.PriceMicro(settleCtx, freeze.Account, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens, cacheCreationTokens)
 			uc.billing.Settle(settleCtx, freeze, requestID, priceMicro, openaiUpstreamID, "model="+realModelName)
 		}
-		costMicro := uc.billing.CostMicro(settleCtx, currency, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+		costMicro := uc.billing.CostMicro(settleCtx, currency, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens, cacheCreationTokens)
 		if priceMicro == 0 {
 			priceMicro = costMicro // no sell-side account: report price at cost
 		}
@@ -1007,7 +1015,16 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	}
 	settleSpan.End()
 
-	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, 0, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), "openai", openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
+	// Protocol 字段驱动 writeAuditLog 的 total_tokens 累加语义（openai: cache 已
+	// 含在 prompt_tokens 内部，不重复累加；anthropic: cache_read/cache_creation
+	// 是 prompt_tokens 之外的独立计数——见 docs/design/02-protocol-adapters.md
+	// 的 ADR 补记）。按 outbound 方言而非 inbound 入口选取，因为该语义只取决于
+	// 用量数字的来源，与客户端用哪个入口无关。
+	auditProtocol := "openai"
+	if providerDialect == model.ProviderTypeAnthropic || providerDialect == model.ProviderTypeBedrock {
+		auditProtocol = "anthropic"
+	}
+	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), auditProtocol, openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
 
 	// 精确缓存写入（仅缓存非流式成功响应；流式响应不重构存储）
 	if cacheEnabled && cacheDigest != "" && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
@@ -1109,6 +1126,28 @@ func (uc *GatewayUseCase) enforceModelQuota(ctx context.Context, key *model.AIVi
 	return true
 }
 
+// reasoningTokensCtxKey carries the Responses-API/o-series reasoning token
+// count (docs/design/02-protocol-adapters.md) from wherever usage was parsed
+// through to writeAuditLog, mirroring the withClientAgent/clientAgentFromCtx
+// side-channel pattern already used in this file — cheaper than threading a
+// 20th positional parameter through every one of writeAuditLog's dozen call
+// sites for a column that's purely informational (never priced).
+type reasoningTokensCtxKey struct{}
+
+func withReasoningTokens(ctx context.Context, n int) context.Context {
+	if n <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, reasoningTokensCtxKey{}, n)
+}
+
+func reasoningTokensFromCtx(ctx context.Context) int {
+	if n, ok := ctx.Value(reasoningTokensCtxKey{}).(int); ok {
+		return n
+	}
+	return 0
+}
+
 // writeAuditLog 异步写入审计日志
 func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtualKey, actualProviderID uint, modelName string,
 	reqBody, respBody []byte, promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens int,
@@ -1153,6 +1192,7 @@ func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtua
 		CompletionTokens:    completionTokens,
 		CacheReadTokens:     cacheReadTokens,
 		CacheCreationTokens: cacheCreationTokens,
+		ReasoningTokens:     reasoningTokensFromCtx(ctx),
 		TotalTokens:         totalTokens,
 		LatencyMs:           latency,
 		StatusCode:          statusCode,
@@ -1698,7 +1738,7 @@ func (uc *GatewayUseCase) fillFilesFromDB(ctx context.Context, list []model.AIGa
 // 流式代理辅助函数
 // =============================================================================
 
-func streamProxy(w http.ResponseWriter, body io.Reader) (respBody []byte, promptTokens, completionTokens, cachedTokens int, streamErr string) {
+func streamProxy(w http.ResponseWriter, body io.Reader) (respBody []byte, promptTokens, completionTokens, cachedTokens, reasoningTokens int, streamErr string) {
 	flusher, hasFlusher := w.(http.Flusher)
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024)
@@ -1723,14 +1763,15 @@ func streamProxy(w http.ResponseWriter, body io.Reader) (respBody []byte, prompt
 				streamErr = e
 			}
 		}
-		p, c, cached := parseUsageFromChunk([]byte(payload))
+		p, c, cached, reasoning := parseUsageFromChunk([]byte(payload))
 		if p > 0 || c > 0 {
 			promptTokens = p
 			completionTokens = c
 			cachedTokens = cached
+			reasoningTokens = reasoning
 		}
 	}
-	return collected, promptTokens, completionTokens, cachedTokens, streamErr
+	return collected, promptTokens, completionTokens, cachedTokens, reasoningTokens, streamErr
 }
 
 func parseStreamChunkError(payload string) string {
@@ -1743,7 +1784,7 @@ func parseStreamChunkError(payload string) string {
 	return ""
 }
 
-func parseUsageFromChunk(data []byte) (promptTokens, completionTokens, cachedTokens int) {
+func parseUsageFromChunk(data []byte) (promptTokens, completionTokens, cachedTokens, reasoningTokens int) {
 	var chunk struct {
 		Usage *struct {
 			PromptTokens        int `json:"prompt_tokens"`
@@ -1751,18 +1792,24 @@ func parseUsageFromChunk(data []byte) (promptTokens, completionTokens, cachedTok
 			PromptTokensDetails *struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
+			CompletionTokensDetails *struct {
+				ReasoningTokens int `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
 		} `json:"usage"`
 	}
 	if json.Unmarshal(data, &chunk) == nil && chunk.Usage != nil {
 		if chunk.Usage.PromptTokensDetails != nil {
 			cachedTokens = chunk.Usage.PromptTokensDetails.CachedTokens
 		}
-		return chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens, cachedTokens
+		if chunk.Usage.CompletionTokensDetails != nil {
+			reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
+		}
+		return chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens, cachedTokens, reasoningTokens
 	}
-	return 0, 0, 0
+	return 0, 0, 0, 0
 }
 
-func parseUsageFromBody(body []byte) (promptTokens, completionTokens, cachedTokens int) {
+func parseUsageFromBody(body []byte) (promptTokens, completionTokens, cachedTokens, reasoningTokens int) {
 	var resp struct {
 		Usage struct {
 			PromptTokens        int `json:"prompt_tokens"`
@@ -1771,18 +1818,24 @@ func parseUsageFromBody(body []byte) (promptTokens, completionTokens, cachedToke
 			PromptTokensDetails *struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
+			CompletionTokensDetails *struct {
+				ReasoningTokens int `json:"reasoning_tokens"`
+			} `json:"completion_tokens_details"`
 		} `json:"usage"`
 	}
 	if json.Unmarshal(body, &resp) != nil {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
 	if resp.Usage.PromptTokensDetails != nil {
 		cachedTokens = resp.Usage.PromptTokensDetails.CachedTokens
 	}
-	if resp.Usage.PromptTokens == 0 && resp.Usage.CompletionTokens == 0 && resp.Usage.TotalTokens > 0 {
-		return resp.Usage.TotalTokens, 0, cachedTokens
+	if resp.Usage.CompletionTokensDetails != nil {
+		reasoningTokens = resp.Usage.CompletionTokensDetails.ReasoningTokens
 	}
-	return resp.Usage.PromptTokens, resp.Usage.CompletionTokens, cachedTokens
+	if resp.Usage.PromptTokens == 0 && resp.Usage.CompletionTokens == 0 && resp.Usage.TotalTokens > 0 {
+		return resp.Usage.TotalTokens, 0, cachedTokens, reasoningTokens
+	}
+	return resp.Usage.PromptTokens, resp.Usage.CompletionTokens, cachedTokens, reasoningTokens
 }
 
 func upstreamErrSnippet(body []byte) string {
@@ -1953,6 +2006,7 @@ func (uc *GatewayUseCase) StartBackgroundWorkers(ctx context.Context) {
 	go StartKeyCacheInvalidator(ctx, uc.rdb, uc.rawLog)
 	go StartQuotaReleaseSweeper(ctx, uc.db, uc.rdb, uc.rawLog)
 	go uc.StartActiveHealthProbes(ctx)
+	go uc.StartBatchSettlementPoller(ctx)
 	uc.EnsureTenancyDefaults(ctx)
 	if uc.billing != nil {
 		uc.billing.Start(ctx)

@@ -105,7 +105,12 @@ func invalidateCNYRateCache(ctx context.Context, rdb *redis.Client) {
 	}
 }
 
-func calcCredits(price *modelPriceEntry, promptTokens, completionTokens, cacheReadTokens int, ratePerCredit float64) (credits float64, microCredits int64, costCNY float64) {
+// calcCredits prices normalized usage. cacheWriteTokens (Anthropic's
+// cache_creation_input_tokens — always 0 for dialects that don't report a
+// distinct cache-write count) is priced via AIModelItem.CacheWritePricePerMillion,
+// which existed as a column since D02 but was never read by this function
+// until the Anthropic Messages/Bedrock inbound work needed it end-to-end.
+func calcCredits(price *modelPriceEntry, promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens int, ratePerCredit float64) (credits float64, microCredits int64, costCNY float64) {
 	if price.noPricing || price.inputPrice == 0 {
 		return 0, 0, 0
 	}
@@ -114,10 +119,15 @@ func calcCredits(price *modelPriceEntry, promptTokens, completionTokens, cacheRe
 	if cacheReadPrice == 0 {
 		cacheReadPrice = price.inputPrice
 	}
+	cacheWritePrice := price.cacheWritePrice
+	if cacheWritePrice == 0 {
+		cacheWritePrice = price.inputPrice
+	}
 
 	costCNY = (float64(promptTokens)*price.inputPrice +
 		float64(completionTokens)*price.outputPrice +
-		float64(cacheReadTokens)*cacheReadPrice) / 1_000_000
+		float64(cacheReadTokens)*cacheReadPrice +
+		float64(cacheWriteTokens)*cacheWritePrice) / 1_000_000
 
 	if ratePerCredit > 0 {
 		credits = costCNY / ratePerCredit

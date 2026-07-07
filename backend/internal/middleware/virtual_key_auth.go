@@ -31,7 +31,7 @@ func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 		// span topology) — it must end before next.ServeHTTP, not wrap the whole request.
 		ctx, authSpan := observability.Tracer.Start(r.Context(), "aigw.auth")
 
-		token := extractBearerToken(r)
+		token := extractVirtualKeyToken(r)
 		if token == "" || !strings.HasPrefix(token, "sk-vk-") {
 			authSpan.End()
 			writeJSONError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
@@ -82,6 +82,19 @@ func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 		ctx = biz.WithVirtualKey(ctx, key)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// extractVirtualKeyToken accepts either Authorization: Bearer sk-vk-* (the
+// gateway's original convention) or x-api-key: sk-vk-* (the Anthropic SDK's
+// convention, needed for the /anthropic/v1/messages inbound codec — D02).
+func extractVirtualKeyToken(r *http.Request) string {
+	if tok := extractBearerToken(r); tok != "" {
+		return tok
+	}
+	if key := r.Header.Get("x-api-key"); key != "" {
+		return key
+	}
+	return ""
 }
 
 func extractBearerToken(r *http.Request) string {

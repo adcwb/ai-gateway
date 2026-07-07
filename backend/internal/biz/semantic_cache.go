@@ -119,7 +119,7 @@ func (uc *GatewayUseCase) generateEmbedding(ctx context.Context, tenantID uint, 
 		return nil, fmt.Errorf("semantic cache: malformed embedding response")
 	}
 	if uc.billing != nil && parsed.Usage.PromptTokens > 0 {
-		costMicro := uc.billing.CostMicro(ctx, "CNY", providerID, modelName, parsed.Usage.PromptTokens, 0, 0)
+		costMicro := uc.billing.CostMicro(ctx, "CNY", providerID, modelName, parsed.Usage.PromptTokens, 0, 0, 0)
 		uc.billing.RecordUsage(tenantID, 0, providerID, modelName, parsed.Usage.PromptTokens, 0, 0, costMicro, costMicro, false)
 	}
 	return parsed.Data[0].Embedding, nil

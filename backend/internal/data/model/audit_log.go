@@ -22,7 +22,7 @@ type AIGatewayAuditLog struct {
 	RequestBody  string `gorm:"-" json:"requestBody"`
 	ResponseBody string `gorm:"-" json:"responseBody"`
 
-	ExtractedFiles []ExtractedFile      `gorm:"-" json:"extractedFiles,omitempty"`
+	ExtractedFiles []ExtractedFile         `gorm:"-" json:"extractedFiles,omitempty"`
 	Files          []AIGatewayAuditLogFile `gorm:"-" json:"files,omitempty"`
 
 	PromptTokens        int `json:"promptTokens"`
@@ -30,16 +30,21 @@ type AIGatewayAuditLog struct {
 	TotalTokens         int `json:"totalTokens"`
 	CacheReadTokens     int `gorm:"default:0" json:"cacheReadTokens"`
 	CacheCreationTokens int `gorm:"default:0" json:"cacheCreationTokens"`
+	// ReasoningTokens is informational only (docs/design/02-protocol-adapters.md):
+	// OpenAI/Responses-API reasoning tokens are already a subset of
+	// CompletionTokens for pricing purposes, so this column is never fed into
+	// calcCredits — it exists purely so the audit UI can show the breakdown.
+	ReasoningTokens int `gorm:"default:0" json:"reasoningTokens"`
 
-	Protocol  string `gorm:"type:varchar(16);default:'openai'" json:"protocol"`
+	Protocol string `gorm:"type:varchar(16);default:'openai'" json:"protocol"`
 
 	// Failover trail (docs/design/01-routing-and-lb.md): total upstream
 	// attempts and per-attempt provider/status/error/latency records.
 	AttemptsTotal    int            `gorm:"column:attempts_total;default:0" json:"attemptsTotal"`
 	ProviderAttempts datatypes.JSON `gorm:"column:provider_attempts;type:json" json:"providerAttempts,omitempty"`
 
-	LatencyMs int64  `json:"latencyMs"`
-	StatusCode int   `json:"statusCode"`
+	LatencyMs    int64  `json:"latencyMs"`
+	StatusCode   int    `json:"statusCode"`
 	ErrorMessage string `gorm:"type:varchar(512)" json:"errorMessage"`
 
 	PIIBlocked bool   `gorm:"default:false" json:"piiBlocked"`

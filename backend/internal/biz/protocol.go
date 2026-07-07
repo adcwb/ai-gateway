@@ -29,6 +29,7 @@ import (
 type adapterConfig struct {
 	AnthropicVersion string `json:"anthropicVersion"`
 	APIVersion       string `json:"apiVersion"`
+	Region           string `json:"region"` // bedrock only
 }
 
 func parseAdapterConfig(p *model.AIProvider) adapterConfig {
@@ -41,6 +42,9 @@ func parseAdapterConfig(p *model.AIProvider) adapterConfig {
 	}
 	if cfg.APIVersion == "" {
 		cfg.APIVersion = "2024-06-01"
+	}
+	if cfg.Region == "" {
+		cfg.Region = "us-east-1"
 	}
 	return cfg
 }
@@ -83,6 +87,9 @@ func buildUpstreamRequest(ctx context.Context, entry *providerEntry, method, ope
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("x-goog-api-key", entry.apiKey)
 		return req, nil
+
+	case model.ProviderTypeBedrock:
+		return buildBedrockRequest(ctx, entry, cfg, sendBody, isStream)
 
 	case model.ProviderTypeAzureOpenAI:
 		// BaseURL is expected to include /openai/deployments/{deployment}
@@ -283,10 +290,10 @@ func rawContentToText(raw json.RawMessage) string {
 // -----------------------------------------------------------------------------
 
 type anthUsage struct {
-	InputTokens         int `json:"input_tokens"`
-	OutputTokens        int `json:"output_tokens"`
-	CacheReadInput      int `json:"cache_read_input_tokens"`
-	CacheCreationInput  int `json:"cache_creation_input_tokens"`
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	CacheReadInput     int `json:"cache_read_input_tokens"`
+	CacheCreationInput int `json:"cache_creation_input_tokens"`
 }
 
 type anthContentBlock struct {
@@ -309,8 +316,12 @@ func mapAnthropicStopReason(r string) string {
 }
 
 // anthropicToOpenAIResponse converts a complete Anthropic message into an
-// OpenAI chat.completion body and normalized usage.
-func anthropicToOpenAIResponse(body []byte, modelName string) ([]byte, int, int, int, error) {
+// OpenAI chat.completion body and normalized usage. The 5th return value is
+// Anthropic's cache_creation_input_tokens (prompt-cache write) — carried
+// through the OpenAI-shape usage object as the gateway-internal extension
+// field prompt_tokens_details.cache_creation_tokens so a downstream Anthropic
+// Messages inbound encoder (protocol_anthropic_inbound.go) can read it back.
+func anthropicToOpenAIResponse(body []byte, modelName string) ([]byte, int, int, int, int, error) {
 	var in struct {
 		ID         string             `json:"id"`
 		Model      string             `json:"model"`
@@ -319,7 +330,7 @@ func anthropicToOpenAIResponse(body []byte, modelName string) ([]byte, int, int,
 		Usage      anthUsage          `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &in); err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, 0, err
 	}
 
 	var text strings.Builder
@@ -357,12 +368,13 @@ func anthropicToOpenAIResponse(body []byte, modelName string) ([]byte, int, int,
 			"completion_tokens": in.Usage.OutputTokens,
 			"total_tokens":      in.Usage.InputTokens + in.Usage.OutputTokens,
 			"prompt_tokens_details": map[string]interface{}{
-				"cached_tokens": in.Usage.CacheReadInput,
+				"cached_tokens":         in.Usage.CacheReadInput,
+				"cache_creation_tokens": in.Usage.CacheCreationInput,
 			},
 		},
 	}
 	b, err := json.Marshal(out)
-	return b, in.Usage.InputTokens, in.Usage.OutputTokens, in.Usage.CacheReadInput, err
+	return b, in.Usage.InputTokens, in.Usage.OutputTokens, in.Usage.CacheReadInput, in.Usage.CacheCreationInput, err
 }
 
 // -----------------------------------------------------------------------------
@@ -373,11 +385,11 @@ func anthropicToOpenAIResponse(body []byte, modelName string) ([]byte, int, int,
 // chat.completion.chunk SSE to w. Event-level state machine per
 // docs/design/02-protocol-adapters.md: content_block_* map to indexed deltas,
 // usage is emitted as a terminal chunk regardless of where it arrived.
-// Returns (accumulated text for audit, prompt, completion, cacheRead, errMsg).
-func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelName string) ([]byte, int, int, int, string) {
+// Returns (accumulated text for audit, prompt, completion, cacheRead, cacheCreation, errMsg).
+func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelName string) ([]byte, int, int, int, int, string) {
 	flusher, _ := w.(http.Flusher)
 	var audit strings.Builder
-	promptTokens, completionTokens, cachedTokens := 0, 0, 0
+	promptTokens, completionTokens, cachedTokens, cacheCreationTokens := 0, 0, 0, 0
 	finishReason := "stop"
 	streamErr := ""
 	msgID := ""
@@ -429,6 +441,7 @@ func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelN
 				msgID = evt.Message.ID
 				promptTokens = evt.Message.Usage.InputTokens
 				cachedTokens = evt.Message.Usage.CacheReadInput
+				cacheCreationTokens = evt.Message.Usage.CacheCreationInput
 			}
 			writeChunk(map[string]interface{}{"role": "assistant", "content": ""}, nil, nil)
 
@@ -464,7 +477,7 @@ func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelN
 			case "input_json_delta":
 				writeChunk(map[string]interface{}{
 					"tool_calls": []map[string]interface{}{{
-						"index": toolIndex,
+						"index":    toolIndex,
 						"function": map[string]interface{}{"arguments": evt.Delta.PartialJSON},
 					}},
 				}, nil, nil)
@@ -502,7 +515,8 @@ func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelN
 				"completion_tokens": completionTokens,
 				"total_tokens":      promptTokens + completionTokens,
 				"prompt_tokens_details": map[string]interface{}{
-					"cached_tokens": cachedTokens,
+					"cached_tokens":         cachedTokens,
+					"cache_creation_tokens": cacheCreationTokens,
 				},
 			})
 			fmt.Fprint(w, "data: [DONE]\n\n")
@@ -511,5 +525,5 @@ func translateAnthropicStream(w http.ResponseWriter, body *bufio.Scanner, modelN
 			}
 		}
 	}
-	return []byte(audit.String()), promptTokens, completionTokens, cachedTokens, streamErr
+	return []byte(audit.String()), promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr
 }

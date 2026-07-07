@@ -34,6 +34,11 @@ type AIProvider struct {
 	// (docs/design/02-protocol-adapters.md), e.g.
 	//   anthropic:    {"anthropicVersion": "2023-06-01"}
 	//   azure_openai: {"apiVersion": "2024-06-01"}
+	//   bedrock:      {"region": "us-east-1"} — credentials (access key/secret/
+	//                 session token) are JSON-encoded into APIKey instead, since
+	//                 that column is already the one AES-256-GCM-encrypted secret
+	//                 slot; region is not a secret so it lives here like the
+	//                 other dialects' non-secret settings.
 	AdapterConfig datatypes.JSON `gorm:"column:adapter_config;type:json" json:"adapterConfig"`
 
 	// BreakerConfig carries per-provider circuit-breaker overrides
@@ -50,6 +55,11 @@ const (
 	ProviderTypeAnthropic        = "anthropic"
 	ProviderTypeAzureOpenAI      = "azure_openai"
 	ProviderTypeGemini           = "gemini"
+	// ProviderTypeBedrock targets Anthropic Claude models served through AWS
+	// Bedrock's native Invoke API (docs/design/02-protocol-adapters.md). Other
+	// Bedrock model families (Titan/Llama/Mistral/Nova) are out of scope — their
+	// invoke body shapes are mutually incompatible and unrelated to Claude's.
+	ProviderTypeBedrock = "bedrock"
 )
 
 func (AIProvider) TableName() string { return "ai_providers" }

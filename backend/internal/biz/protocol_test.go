@@ -76,14 +76,14 @@ func TestAnthropicToOpenAIResponse(t *testing.T) {
 			{"type": "tool_use", "id": "t9", "name": "get_weather", "input": {"city": "SH"}}
 		],
 		"stop_reason": "tool_use",
-		"usage": {"input_tokens": 30, "output_tokens": 12, "cache_read_input_tokens": 5}
+		"usage": {"input_tokens": 30, "output_tokens": 12, "cache_read_input_tokens": 5, "cache_creation_input_tokens": 3}
 	}`)
-	out, p, c, cached, err := anthropicToOpenAIResponse(in, "virtual-claude")
+	out, p, c, cached, cacheCreated, err := anthropicToOpenAIResponse(in, "virtual-claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p != 30 || c != 12 || cached != 5 {
-		t.Fatalf("usage normalization wrong: %d %d %d", p, c, cached)
+	if p != 30 || c != 12 || cached != 5 || cacheCreated != 3 {
+		t.Fatalf("usage normalization wrong: %d %d %d %d", p, c, cached, cacheCreated)
 	}
 	var m struct {
 		Object  string `json:"object"`
@@ -142,13 +142,13 @@ func TestTranslateAnthropicStream(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	scanner := bufio.NewScanner(strings.NewReader(sse))
-	audit, p, c, cached, errMsg := translateAnthropicStream(rec, scanner, "virtual-claude")
+	audit, p, c, cached, cacheCreated, errMsg := translateAnthropicStream(rec, scanner, "virtual-claude")
 
 	if string(audit) != "Hello world" {
 		t.Fatalf("audit text = %q", audit)
 	}
-	if p != 10 || c != 7 || cached != 2 || errMsg != "" {
-		t.Fatalf("usage: %d %d %d err=%s", p, c, cached, errMsg)
+	if p != 10 || c != 7 || cached != 2 || cacheCreated != 0 || errMsg != "" {
+		t.Fatalf("usage: %d %d %d %d err=%s", p, c, cached, cacheCreated, errMsg)
 	}
 	out := rec.Body.String()
 	if !strings.Contains(out, `"content":"Hello"`) || !strings.Contains(out, `chat.completion.chunk`) {

@@ -89,6 +89,8 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIAdminKey{},
 		&model.AIAdminAuditLog{},
 		&model.AIMCPServer{},
+		&model.AIProxyFile{},
+		&model.AIBatchJob{},
 	)
 }
 

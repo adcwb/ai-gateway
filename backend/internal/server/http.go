@@ -169,9 +169,29 @@ func NewHTTPServer(
 
 	tracing := middleware.NewTracing(sys)
 
-	// /ai/v1/models must be registered before /ai/v1/ catch-all
+	// /ai/v1/models, /ai/v1/responses and the Batch/Files routes must be
+	// registered before the /ai/v1/ catch-all.
 	mux.Handle("/ai/v1/models", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ListModels))))
+	mux.Handle("/ai/v1/responses", tracing.Middleware("openai-responses", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ResponsesProxy))))
+
+	// Batch + Files API proxy (docs/design/09-extensibility.md), openai_compatible
+	// providers only — a required X-AIGW-Provider header on the create/upload
+	// calls selects which provider owns the (provider-scoped) file/batch.
+	mux.Handle("POST /ai/v1/files", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.FilesUpload))))
+	mux.Handle("GET /ai/v1/files", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.FilesList))))
+	mux.Handle("GET /ai/v1/files/{id}", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.FilesGet))))
+	mux.Handle("GET /ai/v1/files/{id}/content", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.FilesContent))))
+	mux.Handle("DELETE /ai/v1/files/{id}", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.FilesDelete))))
+	mux.Handle("POST /ai/v1/batches", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesCreate))))
+	mux.Handle("GET /ai/v1/batches", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesList))))
+	mux.Handle("GET /ai/v1/batches/{id}", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesGet))))
+	mux.Handle("POST /ai/v1/batches/{id}/cancel", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesCancel))))
+
 	mux.Handle("/ai/v1/", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest))))
+
+	// Anthropic Messages API inbound codec (docs/design/02-protocol-adapters.md):
+	// accepts x-api-key: sk-vk-* (Anthropic SDK convention) in addition to Bearer.
+	mux.Handle("/anthropic/v1/messages", tracing.Middleware("anthropic", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.AnthropicMessagesProxy))))
 
 	// MCP gateway (docs/design/09-extensibility.md): same sk-vk-* credential,
 	// same middleware, as model traffic — "one credential system for models

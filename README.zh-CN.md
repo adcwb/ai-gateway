@@ -117,20 +117,20 @@ curl localhost:8080/ai/v1/chat/completions \
 - **P1 商业闭环（核心）**：租户→项目→Key 层级、可选启用的预付/后付余额账户（复式流水 + 冻结→结算扣减）、宽限期停用、预算告警、售价价格表、按日用量归集与报表、规则式 PII 引擎（block/redact/log）。
 - **P2 差异化（核心）**：Anthropic 与 Gemini 原生出口适配（含 SSE 流式翻译）、Azure OpenAI 适配及用量归一化、精确响应缓存与缓存感知计费。
 - **补缺一轮**：路由策略 + 降级链 + 延迟 EWMA、提供方模型同步、项目配额模板、计费告警 webhook、`doctor`/`rekey` CLI、OpenAPI 规范、Helm chart、CI 覆盖率门槛 + PostgreSQL 冒烟、控制台管理 UI（Key 创建含一次性明文、提供方表单、用量图表）。
+- **P2/P3 后续一轮**：主动健康探测、OpenTelemetry 追踪、控制台模型与价格表/审计正文/会话/安全/系统设置页面 + Playwright E2E、SSO/OIDC + 四角色 RBAC + 管理员 API Key、可插拔护栏 checker 链（含外部 gRPC checker）+ 审计正文加密、语义响应缓存（可插拔向量后端 + Redis/RediSearch）、MCP 网关（工具调用代理 + 治理）。
+- **协议面一轮**：入站 Anthropic Messages（`/anthropic/v1/messages`）与 OpenAI Responses（`/ai/v1/responses`）入口（含完整 SSE 流式翻译）、面向 Claude 模型的 Bedrock 出口适配（手写 SigV4）、面向 openai_compatible provider 的 Batch + Files API 代理（含延迟用量结算）。
 
 ### 尚未实现（均已有完整设计，见[设计套件](docs/zh-CN/README.md)）
 
 | 领域 | 缺失部分 |
 | --- | --- |
-| 访问控制（[D04](docs/zh-CN/design/04-multi-tenancy-and-auth.md)） | SSO/OIDC（用户体系按计划跳过——后续直接引入 SSO）、管理查询的租户级隔离 |
-| 路由（[D01](docs/zh-CN/design/01-routing-and-lb.md)） | 主动健康探测（当前仅被动熔断） |
+| 访问控制（[D04](docs/zh-CN/design/04-multi-tenancy-and-auth.md)） | 所有列表/查询类端点的租户级过滤（当前 RBAC 仅覆盖已命名的状态变更操作） |
+| 协议（[D02](docs/zh-CN/design/02-protocol-adapters.md)） | Bedrock 对 Anthropic Claude 之外模型族（Titan/Llama/Mistral/Nova）的支持、Responses API 的 `previous_response_id` 串联/`store:true`（无服务端状态持久化）、provider `adapter_config`/bedrock 凭证的控制台 UI |
 | 计费商业化（[D03](docs/zh-CN/design/03-billing-and-monetization.md)） | 支付网关（Stripe/支付宝/微信）、订阅套餐、发票、邮件告警通道 |
-| 协议（[D02](docs/zh-CN/design/02-protocol-adapters.md)） | Anthropic Messages 与 Responses API 入口、Bedrock 出口适配（SigV4）、Batch 与 Files API 代理 |
-| 安全（[D06](docs/zh-CN/design/06-security-and-guardrails.md)） | 可插拔护栏 checker 链、外部 PII 引擎（gRPC/Presidio）、出向流扫描、审计正文加密 |
-| 缓存（[D07](docs/zh-CN/design/07-caching-strategies.md)） | 语义缓存（向量后端）、流式响应缓存、缓存清空 API |
-| 可观测性（[D05](docs/zh-CN/design/05-observability.md)） | OpenTelemetry 追踪 |
-| 控制台（[D08](docs/zh-CN/design/08-web-console.md)） | 模型与价格表页面、审计正文/会话视图、系统设置、Playwright E2E |
-| 面向未来（[D09](docs/zh-CN/design/09-extensibility.md)） | 插件/Hook 机制、事件总线、MCP 网关 |
+| 安全（[D06](docs/zh-CN/design/06-security-and-guardrails.md)） | 出向流式护栏扫描、独立的 `prompt_injection`/`topic_fence` checker、外部 checker 结果缓存 |
+| 缓存（[D07](docs/zh-CN/design/07-caching-strategies.md)） | 缓存清空管理端点（目前仅靠 TTL 失效）、缓存/嵌入配置的控制台 UI |
+| 控制台（[D08](docs/zh-CN/design/08-web-console.md)） | 降级链拖拽编辑器、护栏链可视化编排 |
+| 可扩展性（[D09](docs/zh-CN/design/09-extensibility.md)） | 通用 Hook 分发器 + 事件总线 + 插件体系；MCP 网关本身已交付协议代理 + 工具治理，但批量 JSON-RPC、GET/SSE 服务端推送、独立的工具调用配额维度、MCP 服务器/工具白名单的控制台 UI 仍缺失；Batch/Files 代理仅支持 openai_compatible provider（不含 Anthropic Message Batches 翻译），控制台 UI 仅 API 可用 |
 
 欢迎贡献——每一行背后都有完整的技术设计。
 
