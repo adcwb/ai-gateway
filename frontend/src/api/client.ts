@@ -414,3 +414,12 @@ export interface CreditsRate {
   isEnabled: boolean;
   description: string;
 }
+
+export interface McpServer {
+  id: number;
+  name: string;
+  baseUrl: string;
+  description: string;
+  isEnabled: boolean;
+  createdAt: string;
+}

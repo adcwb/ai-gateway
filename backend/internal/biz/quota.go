@@ -169,6 +169,10 @@ func mlHourlyReqKey(keyID uint, ml modelLimits) string {
 	return fmt.Sprintf("ai:gw:rl:reqs:%d", keyID)
 }
 
+func hourlyToolCallKey(keyID uint) string {
+	return fmt.Sprintf("ai:gw:rl:toolcalls:%d", keyID)
+}
+
 // CheckAndReserve checks quota and reserves concurrency slot before a request.
 func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtualKey) (requestID string, err error) {
 	rdb := q.rdb
@@ -326,6 +330,31 @@ func (q *QuotaManager) CheckModelAwareQuota(ctx context.Context, key *model.AIVi
 			recordKeyTrigger(model.QuotaDimHourlyReq, ml.hourlyReq, ml.hourlyReq)
 			return fmt.Errorf("模型 %s 每小时请求数已达上限 (%d)", modelName, ml.hourlyReq)
 		}
+	}
+	return nil
+}
+
+// CheckAndReserveToolCall enforces a key's dedicated MCP tools/call budget
+// (QuotaDimToolCall, docs/design/09-extensibility.md), independent of the
+// shared HourlyReqQuota that VirtualKeyAuth.ProxyMiddleware already reserves
+// for every route including MCP. A zero quota means unlimited.
+func (q *QuotaManager) CheckAndReserveToolCall(ctx context.Context, key *model.AIVirtualKey) error {
+	if key.HourlyToolCallQuota <= 0 {
+		return nil
+	}
+	rdb := q.rdb
+	now := time.Now()
+	windowSecs := int64(slidingWindowDuration / time.Second)
+	bucketSecs := int64(slidingWindowBucket / time.Second)
+
+	n, scriptErr := rollingCheckAddScript.Run(ctx, rdb, []string{hourlyToolCallKey(key.ID)},
+		now.Unix(), windowSecs, bucketSecs, key.HourlyToolCallQuota, 1).Int64()
+	if scriptErr != nil {
+		return fmt.Errorf("redis error: %w", scriptErr)
+	}
+	if n < 0 {
+		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimToolCall, key.HourlyToolCallQuota, key.HourlyToolCallQuota, "")
+		return fmt.Errorf("每小时工具调用次数已达上限 (%d)", key.HourlyToolCallQuota)
 	}
 	return nil
 }

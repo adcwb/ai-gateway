@@ -114,33 +114,34 @@ func (uc *GatewayUseCase) CreateVirtualKey(ctx context.Context, req dto.CreateVi
 	}
 
 	vk := model.AIVirtualKey{
-		Name:               req.Name,
-		KeyHash:            keyHash,
-		KeyPrefix:          keyPrefix,
-		PlainKeyEncrypted:  plainKeyEncrypted,
-		ProviderID:         req.ProviderID,
-		BaseURL:            req.BaseURL,
-		AllowedModels:      datatypes.JSON(req.AllowedModels),
-		DailyTokenQuota:    req.DailyTokenQuota,
-		HourlyTokenQuota:   req.HourlyTokenQuota,
-		HourlyReqQuota:     req.HourlyReqQuota,
-		MaxConcurrency:     req.MaxConcurrency,
-		PIIPolicyID:        req.PIIPolicyID,
-		IPWhitelistEnabled: req.IPWhitelistEnabled,
-		IPWhitelist:        datatypes.JSON(ipWhitelist),
-		IsEnabled:          true,
-		ExpiresAt:          req.ExpiresAt,
-		ProjectID:          req.ProjectID,
-		ProjectName:        req.ProjectName,
-		EnvID:              req.EnvID,
-		DailyPointQuota:    req.DailyPointQuota,
-		HourlyPointQuota:   req.HourlyPointQuota,
-		CreatedBy:          creatorID,
-		Description:        req.Description,
-		TenantID:           req.TenantID,
-		ProjectRefID:       req.ProjectRefID,
-		CacheConfig:        datatypes.JSON(req.CacheConfig),
-		ToolWhitelist:      datatypes.JSON(req.ToolWhitelist),
+		Name:                req.Name,
+		KeyHash:             keyHash,
+		KeyPrefix:           keyPrefix,
+		PlainKeyEncrypted:   plainKeyEncrypted,
+		ProviderID:          req.ProviderID,
+		BaseURL:             req.BaseURL,
+		AllowedModels:       datatypes.JSON(req.AllowedModels),
+		DailyTokenQuota:     req.DailyTokenQuota,
+		HourlyTokenQuota:    req.HourlyTokenQuota,
+		HourlyReqQuota:      req.HourlyReqQuota,
+		MaxConcurrency:      req.MaxConcurrency,
+		PIIPolicyID:         req.PIIPolicyID,
+		IPWhitelistEnabled:  req.IPWhitelistEnabled,
+		IPWhitelist:         datatypes.JSON(ipWhitelist),
+		IsEnabled:           true,
+		ExpiresAt:           req.ExpiresAt,
+		ProjectID:           req.ProjectID,
+		ProjectName:         req.ProjectName,
+		EnvID:               req.EnvID,
+		DailyPointQuota:     req.DailyPointQuota,
+		HourlyPointQuota:    req.HourlyPointQuota,
+		CreatedBy:           creatorID,
+		Description:         req.Description,
+		TenantID:            req.TenantID,
+		ProjectRefID:        req.ProjectRefID,
+		CacheConfig:         datatypes.JSON(req.CacheConfig),
+		ToolWhitelist:       datatypes.JSON(req.ToolWhitelist),
+		HourlyToolCallQuota: req.HourlyToolCallQuota,
 	}
 	if vk.TenantID == 0 { // attach to the default tenant so billing always has an owner
 		var defTenant model.AITenant
@@ -344,6 +345,9 @@ func (uc *GatewayUseCase) UpdateVirtualKey(ctx context.Context, req dto.UpdateVi
 	}
 	if len(req.ToolWhitelist) > 0 {
 		updates["tool_whitelist"] = datatypes.JSON(req.ToolWhitelist)
+	}
+	if req.HourlyToolCallQuota != nil {
+		updates["hourly_tool_call_quota"] = *req.HourlyToolCallQuota
 	}
 	err = uc.db.WithContext(ctx).Model(&model.AIVirtualKey{}).
 		Where("id = ?", req.ID).Updates(updates).Error

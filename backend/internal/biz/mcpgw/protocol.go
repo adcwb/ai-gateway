@@ -50,6 +50,10 @@ const (
 	// guardrail rejections (not part of the upstream server's error space).
 	ErrCodeToolNotAllowed = -32001
 	ErrCodeGuardrailBlock = -32002
+	// ErrCodeToolCallQuotaExceeded is used when a key's dedicated
+	// QuotaDimToolCall budget (independent of the shared request-count
+	// quota) is exhausted.
+	ErrCodeToolCallQuotaExceeded = -32003
 )
 
 const (
@@ -84,11 +88,7 @@ type ToolsListResult struct {
 	Extra      json.RawMessage `json:"-"` // unused; kept for documentation of the shape
 }
 
-// ParseRequest decodes one JSON-RPC message. Batched requests (a JSON array)
-// are not supported — Streamable HTTP servers overwhelmingly receive one
-// message per POST in practice, and this proxy would need to fan out
-// per-message governance/audit for a batch, which is deferred (documented
-// gap, docs/design/09-extensibility.md ADR addendum).
+// ParseRequest decodes one JSON-RPC message.
 func ParseRequest(body []byte) (*Request, error) {
 	var req Request
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -98,6 +98,38 @@ func ParseRequest(body []byte) (*Request, error) {
 		return nil, fmt.Errorf("mcpgw: missing method")
 	}
 	return &req, nil
+}
+
+// ParseBatch decodes either a single JSON-RPC message or a batched ([]) set
+// of them, per JSON-RPC 2.0's batch convention. isBatch tells the caller
+// whether the wire format was an array (so it knows to reply with an array
+// too, vs. a lone object) even though both paths return a []*Request.
+func ParseBatch(body []byte) (reqs []*Request, isBatch bool, err error) {
+	trimmed := bytes.TrimLeft(body, " \t\r\n")
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		req, perr := ParseRequest(body)
+		if perr != nil {
+			return nil, false, perr
+		}
+		return []*Request{req}, false, nil
+	}
+
+	var raw []json.RawMessage
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return nil, true, fmt.Errorf("mcpgw: invalid JSON-RPC batch: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, true, fmt.Errorf("mcpgw: empty JSON-RPC batch")
+	}
+	reqs = make([]*Request, 0, len(raw))
+	for _, one := range raw {
+		req, perr := ParseRequest(one)
+		if perr != nil {
+			return nil, true, perr
+		}
+		reqs = append(reqs, req)
+	}
+	return reqs, true, nil
 }
 
 func ParseToolCallParams(req *Request) (*ToolCallParams, error) {
@@ -174,4 +206,32 @@ func (c *Client) Forward(ctx context.Context, sessionID string, body []byte) (*F
 		SessionID:   resp.Header.Get("Mcp-Session-Id"),
 		StatusCode:  resp.StatusCode,
 	}, nil
+}
+
+// ForwardStream issues a GET to the upstream MCP endpoint for the
+// Streamable HTTP transport's optional server-initiated push channel
+// (docs/design/09-extensibility.md "MCP gateway"). Unlike Forward, the body
+// is not buffered — the caller streams it directly to its own client and
+// must Close() it when done.
+func (c *Client) ForwardStream(ctx context.Context, sessionID string) (io.ReadCloser, http.Header, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL, nil)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	if sessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
+	}
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return resp.Body, resp.Header, resp.StatusCode, nil
 }

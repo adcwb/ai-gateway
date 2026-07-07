@@ -23,6 +23,8 @@ export default function Keys({ lang }: { lang: Lang }) {
     tenantId: 0,
     dailyTokenQuota: 0,
     routingStrategy: "",
+    toolWhitelistCsv: "",
+    hourlyToolCallQuota: 0,
   });
 
   const { data, loading, error, refresh } = useAsync<[VirtualKey[], Provider[], Tenant[]]>(
@@ -52,6 +54,10 @@ export default function Keys({ lang }: { lang: Lang }) {
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.providerId) return;
+    const toolWhitelist = form.toolWhitelistCsv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     try {
       const resp = await api.post<CreateKeyResp>("/ai/gateway/key", {
         name: form.name.trim(),
@@ -59,11 +65,13 @@ export default function Keys({ lang }: { lang: Lang }) {
         tenantId: form.tenantId,
         dailyTokenQuota: form.dailyTokenQuota || 0,
         routingStrategy: form.routingStrategy || undefined,
+        toolWhitelist: toolWhitelist.length ? toolWhitelist : undefined,
+        hourlyToolCallQuota: form.hourlyToolCallQuota || 0,
       });
       setMinted(resp);
       setCopied(false);
       setShowForm(false);
-      setForm((f) => ({ ...f, name: "", dailyTokenQuota: 0 }));
+      setForm((f) => ({ ...f, name: "", dailyTokenQuota: 0, toolWhitelistCsv: "", hourlyToolCallQuota: 0 }));
       refresh();
     } catch (err) {
       setActionError((err as Error).message);
@@ -188,6 +196,23 @@ export default function Keys({ lang }: { lang: Lang }) {
                 <option value="least_latency">least_latency</option>
                 <option value="least_cost">least_cost</option>
               </select>
+            </label>
+            <label className="field">
+              <div className="field-label">{t("hourlyToolCallQuota", lang)}</div>
+              <input
+                type="number"
+                min="0"
+                value={form.hourlyToolCallQuota || ""}
+                onChange={(e) => setForm({ ...form, hourlyToolCallQuota: Number(e.target.value) || 0 })}
+              />
+            </label>
+            <label className="field span-2">
+              <div className="field-label">{t("toolWhitelistCsv", lang)}</div>
+              <input
+                value={form.toolWhitelistCsv}
+                onChange={(e) => setForm({ ...form, toolWhitelistCsv: e.target.value })}
+                placeholder={t("toolWhitelistHint", lang)}
+              />
             </label>
             <div className="form-actions">
               <button type="submit"><Icon name="plus" size={14} /> {t("submit", lang)}</button>

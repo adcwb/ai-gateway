@@ -61,6 +61,12 @@ type AIVirtualKey struct {
 	// empty/absent = unrestricted (every tool the upstream server exposes).
 	ToolWhitelist datatypes.JSON `gorm:"column:tool_whitelist;type:json" json:"toolWhitelist"`
 
+	// HourlyToolCallQuota is a dedicated budget for MCP tools/call traffic
+	// (QuotaDimToolCall), independent of HourlyReqQuota which every route
+	// (model and MCP alike) already consumes via VirtualKeyAuth.ProxyMiddleware.
+	// 0 = unlimited, same convention as the other quota fields.
+	HourlyToolCallQuota int64 `gorm:"column:hourly_tool_call_quota;default:0" json:"hourlyToolCallQuota"`
+
 	ModelQuotas []AIVirtualKeyModelQuota `gorm:"-" json:"modelQuotas,omitempty"`
 }
 

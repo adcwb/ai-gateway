@@ -9,6 +9,7 @@ const (
 	QuotaDimConcurrency = "concurrency"
 	QuotaDimDailyPoint  = "daily_point"
 	QuotaDimHourlyPoint = "hourly_point"
+	QuotaDimToolCall    = "tool_call"
 )
 
 const (

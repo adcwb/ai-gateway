@@ -9,28 +9,29 @@ import (
 
 // CreateVirtualKeyReq 创建虚拟 Key
 type CreateVirtualKeyReq struct {
-	Name               string          `json:"name"`
-	ProviderID         uint            `json:"providerId"`
-	BaseURL            string          `json:"baseUrl"`
-	AllowedModels      json.RawMessage `json:"allowedModels"`
-	DailyTokenQuota    int64           `json:"dailyTokenQuota"`
-	HourlyTokenQuota   int64           `json:"hourlyTokenQuota"`
-	HourlyReqQuota     int64           `json:"hourlyReqQuota"`
-	MaxConcurrency     int             `json:"maxConcurrency"`
-	PIIPolicyID        *uint           `json:"piiPolicyId"`
-	IPWhitelistEnabled bool            `json:"ipWhitelistEnabled"`
-	IPWhitelist        json.RawMessage `json:"ipWhitelist"`
-	ExpiresAt          *time.Time      `json:"expiresAt"`
-	ProjectID          *string         `json:"projectId"`
-	ProjectName        *string         `json:"projectName"`
-	EnvID              *string         `json:"envId"`
-	DailyPointQuota    float64         `json:"dailyPointQuota"`
-	HourlyPointQuota   float64         `json:"hourlyPointQuota"`
-	Description        string          `json:"description"`
-	TenantID           uint            `json:"tenantId"`     // 0 = default tenant
-	ProjectRefID       uint            `json:"projectRefId"` // 0 = default project
-	CacheConfig        json.RawMessage `json:"cacheConfig"`  // docs/design/07-caching-strategies.md
-	ToolWhitelist      json.RawMessage `json:"toolWhitelist"` // docs/design/09-extensibility.md; empty = unrestricted
+	Name                string          `json:"name"`
+	ProviderID          uint            `json:"providerId"`
+	BaseURL             string          `json:"baseUrl"`
+	AllowedModels       json.RawMessage `json:"allowedModels"`
+	DailyTokenQuota     int64           `json:"dailyTokenQuota"`
+	HourlyTokenQuota    int64           `json:"hourlyTokenQuota"`
+	HourlyReqQuota      int64           `json:"hourlyReqQuota"`
+	MaxConcurrency      int             `json:"maxConcurrency"`
+	PIIPolicyID         *uint           `json:"piiPolicyId"`
+	IPWhitelistEnabled  bool            `json:"ipWhitelistEnabled"`
+	IPWhitelist         json.RawMessage `json:"ipWhitelist"`
+	ExpiresAt           *time.Time      `json:"expiresAt"`
+	ProjectID           *string         `json:"projectId"`
+	ProjectName         *string         `json:"projectName"`
+	EnvID               *string         `json:"envId"`
+	DailyPointQuota     float64         `json:"dailyPointQuota"`
+	HourlyPointQuota    float64         `json:"hourlyPointQuota"`
+	Description         string          `json:"description"`
+	TenantID            uint            `json:"tenantId"`            // 0 = default tenant
+	ProjectRefID        uint            `json:"projectRefId"`        // 0 = default project
+	CacheConfig         json.RawMessage `json:"cacheConfig"`         // docs/design/07-caching-strategies.md
+	ToolWhitelist       json.RawMessage `json:"toolWhitelist"`       // docs/design/09-extensibility.md; empty = unrestricted
+	HourlyToolCallQuota int64           `json:"hourlyToolCallQuota"` // docs/design/09-extensibility.md QuotaDimToolCall; 0 = unlimited
 }
 
 type CreateVirtualKeyResp struct {
@@ -48,20 +49,21 @@ type RevealVirtualKeyResp struct {
 
 // UpdateVirtualKeyReq 更新虚拟 Key 配置
 type UpdateVirtualKeyReq struct {
-	ID                 uint            `json:"id"`
-	Name               string          `json:"name"`
-	AllowedModels      json.RawMessage `json:"allowedModels"`
-	PIIPolicyID        *uint           `json:"piiPolicyId"`
-	IPWhitelistEnabled bool            `json:"ipWhitelistEnabled"`
-	IPWhitelist        json.RawMessage `json:"ipWhitelist"`
-	IsEnabled          *bool           `json:"isEnabled"`
-	ExpiresAt          *time.Time      `json:"expiresAt"`
-	ProjectID          *string         `json:"projectId"`
-	ProjectName        *string         `json:"projectName"`
-	EnvID              *string         `json:"envId"`
-	Description        string          `json:"description"`
-	CacheConfig        json.RawMessage `json:"cacheConfig"`
-	ToolWhitelist      json.RawMessage `json:"toolWhitelist"`
+	ID                  uint            `json:"id"`
+	Name                string          `json:"name"`
+	AllowedModels       json.RawMessage `json:"allowedModels"`
+	PIIPolicyID         *uint           `json:"piiPolicyId"`
+	IPWhitelistEnabled  bool            `json:"ipWhitelistEnabled"`
+	IPWhitelist         json.RawMessage `json:"ipWhitelist"`
+	IsEnabled           *bool           `json:"isEnabled"`
+	ExpiresAt           *time.Time      `json:"expiresAt"`
+	ProjectID           *string         `json:"projectId"`
+	ProjectName         *string         `json:"projectName"`
+	EnvID               *string         `json:"envId"`
+	Description         string          `json:"description"`
+	CacheConfig         json.RawMessage `json:"cacheConfig"`
+	ToolWhitelist       json.RawMessage `json:"toolWhitelist"`
+	HourlyToolCallQuota *int64          `json:"hourlyToolCallQuota"`
 }
 
 type UpdateVirtualKeyStatusReq struct {
@@ -102,17 +104,17 @@ type QuotaConfigItem struct {
 }
 
 type QuotaConfigResp struct {
-	KeyID            uint             `json:"keyId"`
-	Name             string           `json:"name"`
-	KeyPrefix        string           `json:"keyPrefix"`
-	ProviderID       uint             `json:"providerId"`
-	AllowedModels    json.RawMessage  `json:"allowedModels"`
-	DailyTokenQuota  int64            `json:"dailyTokenQuota"`
-	HourlyTokenQuota int64            `json:"hourlyTokenQuota"`
-	HourlyReqQuota   int64            `json:"hourlyReqQuota"`
-	MaxConcurrency   int              `json:"maxConcurrency"`
-	DailyPointQuota  float64          `json:"dailyPointQuota"`
-	HourlyPointQuota float64          `json:"hourlyPointQuota"`
+	KeyID            uint              `json:"keyId"`
+	Name             string            `json:"name"`
+	KeyPrefix        string            `json:"keyPrefix"`
+	ProviderID       uint              `json:"providerId"`
+	AllowedModels    json.RawMessage   `json:"allowedModels"`
+	DailyTokenQuota  int64             `json:"dailyTokenQuota"`
+	HourlyTokenQuota int64             `json:"hourlyTokenQuota"`
+	HourlyReqQuota   int64             `json:"hourlyReqQuota"`
+	MaxConcurrency   int               `json:"maxConcurrency"`
+	DailyPointQuota  float64           `json:"dailyPointQuota"`
+	HourlyPointQuota float64           `json:"hourlyPointQuota"`
 	ModelQuotas      []QuotaConfigItem `json:"modelQuotas"`
 }
 
@@ -222,23 +224,23 @@ type ModelErrorRank struct {
 }
 
 type SecurityOverviewResp struct {
-	TotalRequests  int64           `json:"totalRequests"`
-	BlockCount     int64           `json:"blockCount"`
-	RedactCount    int64           `json:"redactCount"`
-	ErrorCount     int64           `json:"errorCount"`
-	ErrorRate      float64         `json:"errorRate"`
-	TopPIITypes    []PIITypeRank   `json:"topPiiTypes"`
+	TotalRequests  int64            `json:"totalRequests"`
+	BlockCount     int64            `json:"blockCount"`
+	RedactCount    int64            `json:"redactCount"`
+	ErrorCount     int64            `json:"errorCount"`
+	ErrorRate      float64          `json:"errorRate"`
+	TopPIITypes    []PIITypeRank    `json:"topPiiTypes"`
 	TopErrorModels []ModelErrorRank `json:"topErrorModels"`
 }
 
 // GatewayStatsResp 综合统计（仪表盘）
 type GatewayStatsResp struct {
-	TotalRequests     int64   `json:"totalRequests"`
-	TotalTokens       int64   `json:"totalTokens"`
-	TotalCredits      float64 `json:"totalCredits"`
-	TotalCostCNY      float64 `json:"totalCostCNY"`
-	ActiveKeyCount    int64   `json:"activeKeyCount"`
-	ProviderCount     int64   `json:"providerCount"`
+	TotalRequests  int64   `json:"totalRequests"`
+	TotalTokens    int64   `json:"totalTokens"`
+	TotalCredits   float64 `json:"totalCredits"`
+	TotalCostCNY   float64 `json:"totalCostCNY"`
+	ActiveKeyCount int64   `json:"activeKeyCount"`
+	ProviderCount  int64   `json:"providerCount"`
 }
 
 // PageInfo shared pagination request

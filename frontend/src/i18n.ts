@@ -235,6 +235,22 @@ const dict: Record<string, { en: string; zh: string }> = {
   platformWide: { en: "Platform-wide", zh: "平台级" },
   emptyAdminKeys: { en: "No admin API keys yet", zh: "还没有管理员 API Key" },
   confirmDeleteAdminKey: { en: "Delete this admin API key?", zh: "确认删除该管理员 API Key？" },
+  description: { en: "Description", zh: "描述" },
+
+  // ---- MCP Servers (D09) -----------------------------------------------------
+  mcpServers: { en: "MCP Servers", zh: "MCP 服务器" },
+  addMcpServer: { en: "Add MCP server", zh: "添加 MCP 服务器" },
+  mcpBaseUrl: { en: "Upstream URL", zh: "上游地址" },
+  mcpApiKeyOptional: { en: "optional — some servers don't require auth", zh: "可选——部分服务器无需鉴权" },
+  emptyMcpServers: { en: "No MCP servers registered", zh: "尚未注册 MCP 服务器" },
+  emptyMcpServersSub: {
+    en: "Register an upstream MCP server so virtual keys can call its tools through the gateway.",
+    zh: "注册上游 MCP 服务器后，虚拟 Key 即可通过网关调用其工具。",
+  },
+  confirmDeleteMcpServer: { en: "Delete this MCP server?", zh: "确认删除该 MCP 服务器？" },
+  toolWhitelistCsv: { en: "Tool whitelist (comma-separated)", zh: "工具白名单（逗号分隔）" },
+  toolWhitelistHint: { en: "Empty = every tool the server exposes is allowed", zh: "留空表示允许调用该服务器的全部工具" },
+  hourlyToolCallQuota: { en: "Hourly tool-call quota", zh: "每小时工具调用配额" },
 };
 
 export function t(key: string, lang: Lang): string {

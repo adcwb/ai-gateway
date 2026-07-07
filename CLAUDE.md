@@ -61,7 +61,7 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
 | Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
 | Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |
-| MCP gateway (protocol proxy + tool governance) | 🟡 | `/ai/mcp/{serverName}` proxies Streamable HTTP tool traffic behind the same `sk-vk-*` virtual keys as models; per-key `tool_whitelist`, D06 guardrail chain on arguments/results, audit reuse (D09). Batched JSON-RPC, GET/SSE push, dedicated `QuotaDimToolCall`, console UI 🔴 |
+| MCP gateway (protocol proxy + tool governance) | ✅ | `/ai/mcp/{serverName}` proxies Streamable HTTP tool traffic (batched JSON-RPC, GET/SSE push, POST) behind the same `sk-vk-*` virtual keys as models; per-key `tool_whitelist` + dedicated `QuotaDimToolCall`, D06 guardrail chain on arguments/results, audit reuse, console UI (D09). Generic hook dispatcher/event bus remain a separate P3 item 🔴 |
 | Batch + Files API proxy | ✅ | openai_compatible providers only (Anthropic's separate Message Batches API not translated); passthrough + shadow bookkeeping (`AIProxyFile`/`AIBatchJob`) + deferred usage settlement at OpenAI's published 50% batch discount via a background poller (D09) |
 | Extensibility: hook dispatcher, event bus, plugins | 🔴 | P3 (D09), not yet started |
 
