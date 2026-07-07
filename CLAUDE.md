@@ -49,19 +49,20 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Virtual keys, quotas, audit, model mapping, sticky sessions, IP whitelist | ✅ | P0 inherited core |
 | Weighted LB + failover + circuit breaker + strategies + active health probes | ✅ | `biz/router.go`: weighted / priority / least_latency (Redis EWMA) / least_cost per key; per-mapping `fallback_chain`; per-attempt audit trail. `biz/health_probe.go`: opt-in per-provider active probing for idle-period breaker recovery (D01) |
 | Metrics `/metrics`, `/healthz`, `/readyz`, Grafana dashboard, OTel tracing | ✅ | tracing opt-in via `observability.otlp_endpoint` (empty = disabled, zero overhead); span topology + force-sample header per D05 |
-| Admin-token management auth | ✅ | User system intentionally skipped — SSO/OIDC to be introduced directly (D04) |
-| Tenants → projects → keys, default-tenant bootstrap | ✅ | project `quota_template` inheritance ✅; tenant-scoped list filtering 🔴 (admin token = platform admin) |
-| Balance billing: accounts, ledger, freeze→settle, grace/suspension, budget alerts | ✅ | alert webhook ✅ (`AIGW_ALERT_WEBHOOK`); email channel, payment gateways / subscriptions / invoices 🔴 (D03 L4) |
-| Price tables + multi-currency rates | ✅ | console editor UI 🔴 |
+| Admin-token + OIDC/SSO + RBAC + admin API keys | ✅ | bootstrap token, OIDC login (JIT user provisioning + claim→role mapping), 4-role matrix (owner/admin/member/viewer), admin API keys, operator audit log (`ai_admin_audit_logs`) — RBAC applied to the RBAC table's named actions (reveal key, provider/price-table/settings mgmt, billing, member/key mgmt); broad read-list tenant-scoping across every endpoint remains 🔴 (D04) |
+| Tenants → projects → keys, default-tenant bootstrap | ✅ | project `quota_template` inheritance ✅ |
+| Balance billing: accounts, ledger, freeze→settle, grace/suspension, budget alerts | ✅ | alert webhook ✅ (`AIGW_ALERT_WEBHOOK`, console-editable override); email channel, payment gateways / subscriptions / invoices 🔴 (D03 L4) |
+| Price tables + multi-currency rates | ✅ | console editor UI ✅ (Models & Pricing page, D08) |
 | Usage daily rollup + stats endpoints | ✅ | console charts for timeseries 🔴 |
-| Rule-based PII engine (block/redact/log) + injection heuristic | ✅ | pluggable checker chain, external engine (gRPC), outbound/stream scanning, audit-body encryption 🔴 (D06) |
+| Rule-based PII engine + pluggable guardrail chain + external checker (gRPC) + audit-body encryption | ✅ | opt-in per-policy chain (`checker_chain`), non-streaming outbound scanning (identity + translated dialects), `audit.encrypt_bodies` AES-GCM; streaming outbound scanning + standalone `prompt_injection`/`topic_fence` checkers 🔴 (D06) |
 | Protocol adapters | 🟡 | outbound anthropic + gemini (incl. SSE) + azure_openai ✅; Bedrock, inbound Anthropic Messages & Responses API 🔴 (D02) |
-| Exact response cache + hit billing | ✅ | semantic cache 🔴 (D07); streaming responses are not cached (by design, revisit) |
-| Web console | ✅ | key/provider/model-pricing management, usage charts, audit body/session/security views, settings, Playwright E2E ✅ (D08); RBAC/SSO, fallback-chain drag editor, guardrail-chain builder remain out of scope (no user system) |
+| Exact + semantic response cache + hit billing | ✅ | `VectorIndex` interface + Redis (RediSearch) impl with dynamic capability-detection auto-degrade, embeddings generated through the gateway's own outbound dialect code (D07); cache-flush admin endpoint (TTL is the only invalidation today) + console UI for cache/embedding config 🔴; streaming responses are not cached (by design, revisit) |
+| Web console | ✅ | key/provider/model-pricing management, usage charts, audit body/session/security views, settings, users & admin keys, SSO login, Playwright E2E ✅ (D04/D08); fallback-chain drag editor, guardrail-chain builder remain out of scope |
 | Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
 | Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
 | Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |
-| MCP gateway, plugins/hooks, event bus, Batch/Files APIs | 🔴 | P3 (D09) |
+| MCP gateway (protocol proxy + tool governance) | 🟡 | `/ai/mcp/{serverName}` proxies Streamable HTTP tool traffic behind the same `sk-vk-*` virtual keys as models; per-key `tool_whitelist`, D06 guardrail chain on arguments/results, audit reuse (D09). Batched JSON-RPC, GET/SSE push, dedicated `QuotaDimToolCall`, console UI 🔴 |
+| Extensibility: hook dispatcher, event bus, plugins, Batch/Files APIs | 🔴 | P3 (D09), not yet started |
 
 When picking up new work, prefer closing a 🟡 row before starting a 🔴 one, and check the corresponding `docs/design/` document first — most decisions are already made there.
 

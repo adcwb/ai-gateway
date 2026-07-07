@@ -5,11 +5,18 @@ import (
 	"strconv"
 
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/opscenter/ai-gateway/internal/middleware"
 )
 
-// Provider management handlers (admin-authenticated).
+// Provider management handlers (admin-authenticated). Providers are global,
+// cross-tenant objects (docs/design/04: "the one deliberate sharing point" —
+// tenants consume centrally managed upstreams) — mutation is platform-admin
+// only, checked via tenantID 0.
 
 func (s *GatewayService) CreateProvider(w http.ResponseWriter, r *http.Request) {
+	if !middleware.RequireRole(w, r, 0, "owner") {
+		return
+	}
 	var req dto.CreateProviderReq
 	if err := decodeJSON(r, &req); err != nil {
 		failWith(w, http.StatusBadRequest, "invalid JSON body")
@@ -33,6 +40,9 @@ func (s *GatewayService) ListProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GatewayService) UpdateProvider(w http.ResponseWriter, r *http.Request) {
+	if !middleware.RequireRole(w, r, 0, "owner") {
+		return
+	}
 	var req dto.UpdateProviderReq
 	if err := decodeJSON(r, &req); err != nil {
 		failWith(w, http.StatusBadRequest, "invalid JSON body")
@@ -47,6 +57,9 @@ func (s *GatewayService) UpdateProvider(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *GatewayService) DeleteProvider(w http.ResponseWriter, r *http.Request) {
+	if !middleware.RequireRole(w, r, 0, "owner") {
+		return
+	}
 	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
 	if err != nil || id == 0 {
 		failWith(w, http.StatusBadRequest, "missing or invalid id")

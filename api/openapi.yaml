@@ -3,10 +3,13 @@ info:
   title: ai-gateway Management API
   description: |
     Management-plane API of ai-gateway (docs/design/*). The OpenAI-compatible
-    proxy surface (`/ai/v1/*`) is intentionally NOT specified here — it follows
-    the OpenAI API contract and is authenticated with `Bearer sk-vk-*` virtual
-    keys. Everything below is authenticated with the static admin token
-    (`system.admin_token` / `AIGW_ADMIN_TOKEN`) unless marked otherwise.
+    proxy surface (`/ai/v1/*`) and the MCP tool-proxy surface (`POST /ai/mcp/
+    {serverName}`, JSON-RPC 2.0 over Streamable HTTP, docs/design/09-
+    extensibility.md) are intentionally NOT specified here — both follow their
+    own wire protocols and are authenticated with `Bearer sk-vk-*` virtual
+    keys, same as model traffic. Everything below is authenticated with the
+    static admin token (`system.admin_token` / `AIGW_ADMIN_TOKEN`) unless
+    marked otherwise.
 
     Envelope: success `{"code":0,"data":...,"msg":"ok"}`; errors
     `{"code":"REASON","msg":"..."}` with the HTTP status carried by the
@@ -41,7 +44,8 @@ components:
         tenantId: { type: integer }
         projectRefId: { type: integer }
         routingStrategy: { type: string, enum: ["", weighted, priority, least_latency, least_cost] }
-        cacheConfig: { type: object, description: '{"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int}' }
+        cacheConfig: { type: object, description: '{"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int,"semanticEnabled":bool,"semanticThreshold":float,"semanticTtlSec":int} — settable via create/update (docs/design/07-caching-strategies.md); semantic cache additionally requires cacheEmbeddingProviderId/Model/Dim in Settings' }
+        toolWhitelist: { type: array, items: { type: string }, description: "MCP tool names this key may call (docs/design/09-extensibility.md); empty/absent = every tool the upstream server exposes" }
         dailyTokenQuota: { type: integer }
         hourlyTokenQuota: { type: integer }
         hourlyReqQuota: { type: integer }
@@ -233,6 +237,30 @@ paths:
         "400": { description: PROVIDER_SYNC_UNSUPPORTED }
         "502": { description: PROVIDER_SYNC_FAILED }
 
+  /ai/gateway/mcp-servers:
+    post:
+      summary: Register an upstream MCP server (docs/design/09-extensibility.md; optional API key AES-encrypted at rest)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseUrl]
+              properties:
+                name: { type: string }
+                baseUrl: { type: string, description: "upstream Streamable HTTP MCP endpoint" }
+                apiKey: { type: string, writeOnly: true, description: "optional bearer credential to upstream" }
+                description: { type: string }
+      responses: { "200": { description: created } }
+    get:
+      summary: List MCP servers (API keys never serialized)
+      responses: { "200": { description: servers } }
+    put: { summary: Partial update (non-empty apiKey re-encrypts), responses: { "200": { description: updated } } }
+    delete:
+      summary: Soft-delete an MCP server
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+
   /ai/gateway/tenants:
     post:
       summary: Create a tenant (a disabled billing-account shell is created too)
@@ -346,9 +374,9 @@ paths:
 
   /ai/gateway/settings:
     get:
-      summary: Get console-editable settings (currently the alert webhook override)
-      responses: { "200": { description: "data: { alertWebhook, alertWebhookIsOverride }" } }
-    put: { summary: "Partial update; an empty alertWebhook clears the override", responses: { "200": { description: updated } } }
+      summary: Get console-editable settings (alert webhook override, semantic cache embedding config)
+      responses: { "200": { description: "data: { alertWebhook, alertWebhookIsOverride, cacheEmbeddingProviderId, cacheEmbeddingModel, cacheEmbeddingDim }" } }
+    put: { summary: "Partial update; an empty alertWebhook clears the override. cacheEmbeddingProviderId=0 or empty cacheEmbeddingModel disables the semantic cache gateway-wide regardless of any per-key semanticEnabled (docs/design/07-caching-strategies.md)", responses: { "200": { description: updated } } }
   /ai/gateway/settings/test-webhook:
     post:
       summary: Send a synthetic test event to the resolved alert webhook
@@ -375,3 +403,36 @@ paths:
     get: { summary: Session-grouped audit view, responses: { "200": { description: sessions } } }
   /ai/gateway/audit/security-overview:
     get: { summary: PII / error statistics, responses: { "200": { description: stats } } }
+
+  /ai/gateway/auth/config:
+    get:
+      summary: Public — whether SSO is configured and where to send the browser
+      responses: { "200": { description: "data: { oidcEnabled, loginUrl }" } }
+  /ai/gateway/auth/login:
+    get: { summary: "Public — redirects to the OIDC provider's authorization endpoint", responses: { "302": { description: redirect } } }
+  /ai/gateway/auth/callback:
+    get: { summary: "Public — OIDC callback; verifies state+code, sets the session cookie, redirects to /console/", responses: { "302": { description: redirect } } }
+  /ai/gateway/auth/logout:
+    post: { summary: Clears the session cookie, responses: { "200": { description: "{ loggedOut: true }" } } }
+  /ai/gateway/auth/me:
+    get: { summary: The current authenticated principal, responses: { "200": { description: "data: SessionResp" } } }
+  /ai/gateway/users:
+    get:
+      summary: List users, optionally filtered to members of one tenant
+      parameters: [{ name: tenantId, in: query, schema: { type: integer } }]
+      responses: { "200": { description: "data: UserItem[]" } }
+  /ai/gateway/users/role:
+    put: { summary: "Upsert (or, with an empty role, remove) a user's role in one tenant — Owner only", responses: { "200": { description: updated } } }
+  /ai/gateway/users/status:
+    put: { summary: Enable/disable a user account — Owner only, responses: { "200": { description: updated } } }
+  /ai/gateway/admin-keys:
+    post: { summary: "Mint an admin API key (machine principal) — Owner only; plaintext shown once", responses: { "200": { description: "data: CreateAdminKeyResp" } } }
+    get:
+      summary: List admin keys, optionally filtered by tenant (0 = platform-wide)
+      parameters: [{ name: tenantId, in: query, schema: { type: integer } }]
+      responses: { "200": { description: "data: AdminKey[]" } }
+    put: { summary: "Partial update (role/isEnabled) — Owner only", responses: { "200": { description: updated } } }
+    delete:
+      summary: Remove an admin key — Owner only
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }

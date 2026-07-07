@@ -56,6 +56,11 @@ type AIVirtualKey struct {
 	// P2 response cache config: {"exactEnabled":bool,"ttlSec":int,"billingPolicy":"free|discount|full","discountPercent":int}
 	CacheConfig datatypes.JSON `gorm:"column:cache_config;type:json" json:"cacheConfig"`
 
+	// P3 MCP tool governance (docs/design/09-extensibility.md): JSON array of
+	// tool name strings this key may call. Mirrors AllowedModels semantics —
+	// empty/absent = unrestricted (every tool the upstream server exposes).
+	ToolWhitelist datatypes.JSON `gorm:"column:tool_whitelist;type:json" json:"toolWhitelist"`
+
 	ModelQuotas []AIVirtualKeyModelQuota `gorm:"-" json:"modelQuotas,omitempty"`
 }
 

@@ -13,6 +13,8 @@ type Bootstrap struct {
 	AI            *AI            `yaml:"ai"`
 	System        *System        `yaml:"system"`
 	Observability *Observability `yaml:"observability"`
+	Auth          *Auth          `yaml:"auth"`
+	Audit         *Audit         `yaml:"audit"`
 }
 
 type Server struct {
@@ -70,6 +72,38 @@ type Observability struct {
 	SampleRatio  float64 `yaml:"trace_sample_ratio"`
 }
 
+// Auth configures the console management-plane principals beyond the
+// bootstrap admin token (docs/design/04-multi-tenancy-and-auth.md): OIDC/SSO
+// login with JIT user provisioning, and JWT session cookies. Empty OIDCIssuer
+// disables SSO entirely — the bootstrap token remains the only principal,
+// exactly today's behavior.
+type Auth struct {
+	OIDCIssuer       string `yaml:"oidc_issuer"`
+	OIDCClientID     string `yaml:"oidc_client_id"`
+	OIDCClientSecret string `yaml:"oidc_client_secret"`
+	OIDCRedirectURL  string `yaml:"oidc_redirect_url"`
+	// OIDCRoleClaim names the ID-token claim (e.g. "groups", "roles") consulted
+	// for JIT role assignment into the tenant named OIDCDefaultTenant; absent
+	// or unmapped claim values fall back to OIDCDefaultRole.
+	OIDCRoleClaim     string `yaml:"oidc_role_claim"`
+	OIDCDefaultRole   string `yaml:"oidc_default_role"`
+	OIDCDefaultTenant string `yaml:"oidc_default_tenant"`
+	// SessionSecret signs the console's JWT session cookie (HMAC). Falls back
+	// to system.encryption_key when unset so a single secret suffices for the
+	// common case; set independently to rotate sessions without re-encrypting data.
+	SessionSecret   string `yaml:"session_secret"`
+	SessionTTLHours int    `yaml:"session_ttl_hours"`
+}
+
+// Audit configures the gateway traffic audit trail (docs/design/06-security-
+// and-guardrails.md P1 "Audit body encryption"). EncryptBodies AES-GCM
+// encrypts request/response bodies at rest using system.encryption_key —
+// opt-in because encrypted bodies are excluded from Elasticsearch full-text
+// indexing (a deployment chooses searchability or at-rest encryption).
+type Audit struct {
+	EncryptBodies bool `yaml:"encrypt_bodies"`
+}
+
 // ApplyEnvOverrides maps AIGW_* environment variables onto config fields so
 // secrets never need to live in the YAML file (compose / k8s ergonomics).
 func (bc *Bootstrap) ApplyEnvOverrides() {
@@ -110,6 +144,24 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 		if ratio, err := strconv.ParseFloat(v, 64); err == nil {
 			bc.ensureObservability().SampleRatio = ratio
 		}
+	}
+	if v := os.Getenv("AIGW_OIDC_ISSUER"); v != "" {
+		bc.ensureAuth().OIDCIssuer = v
+	}
+	if v := os.Getenv("AIGW_OIDC_CLIENT_ID"); v != "" {
+		bc.ensureAuth().OIDCClientID = v
+	}
+	if v := os.Getenv("AIGW_OIDC_CLIENT_SECRET"); v != "" {
+		bc.ensureAuth().OIDCClientSecret = v
+	}
+	if v := os.Getenv("AIGW_OIDC_REDIRECT_URL"); v != "" {
+		bc.ensureAuth().OIDCRedirectURL = v
+	}
+	if v := os.Getenv("AIGW_SESSION_SECRET"); v != "" {
+		bc.ensureAuth().SessionSecret = v
+	}
+	if v := os.Getenv("AIGW_AUDIT_ENCRYPT_BODIES"); v != "" {
+		bc.ensureAudit().EncryptBodies = v == "true" || v == "1"
 	}
 }
 
@@ -152,4 +204,18 @@ func (bc *Bootstrap) ensureObservability() *Observability {
 		bc.Observability = &Observability{}
 	}
 	return bc.Observability
+}
+
+func (bc *Bootstrap) ensureAuth() *Auth {
+	if bc.Auth == nil {
+		bc.Auth = &Auth{}
+	}
+	return bc.Auth
+}
+
+func (bc *Bootstrap) ensureAudit() *Audit {
+	if bc.Audit == nil {
+		bc.Audit = &Audit{}
+	}
+	return bc.Audit
 }

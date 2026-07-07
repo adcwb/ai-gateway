@@ -32,14 +32,24 @@ const (
 	CacheBillingFree     = "free"
 	CacheBillingDiscount = "discount"
 	CacheBillingFull     = "full"
+
+	semanticCacheDefaultTTL       = 3600 // seconds
+	semanticCacheDefaultThreshold = 0.95
 )
 
-// keyCacheConfig is the shape of AIVirtualKey.CacheConfig.
+// keyCacheConfig is the shape of AIVirtualKey.CacheConfig. Semantic fields are
+// additive to the exact-cache shape shipped in P2-4 (docs/design/07-caching-
+// strategies.md "Two caches, one interface") — both are off by default and
+// enabled independently per key.
 type keyCacheConfig struct {
 	ExactEnabled    bool   `json:"exactEnabled"`
 	TTLSec          int    `json:"ttlSec"`
 	BillingPolicy   string `json:"billingPolicy"`
 	DiscountPercent int    `json:"discountPercent"`
+
+	SemanticEnabled   bool    `json:"semanticEnabled"`
+	SemanticThreshold float64 `json:"semanticThreshold"` // cosine similarity, default 0.95
+	SemanticTTLSec    int     `json:"semanticTtlSec"`
 }
 
 func parseCacheConfig(key *model.AIVirtualKey) (keyCacheConfig, bool) {
@@ -47,7 +57,7 @@ func parseCacheConfig(key *model.AIVirtualKey) (keyCacheConfig, bool) {
 	if len(key.CacheConfig) == 0 {
 		return cfg, false
 	}
-	if err := json.Unmarshal(key.CacheConfig, &cfg); err != nil || !cfg.ExactEnabled {
+	if err := json.Unmarshal(key.CacheConfig, &cfg); err != nil {
 		return cfg, false
 	}
 	if cfg.TTLSec <= 0 {
@@ -56,7 +66,16 @@ func parseCacheConfig(key *model.AIVirtualKey) (keyCacheConfig, bool) {
 	if cfg.BillingPolicy == "" {
 		cfg.BillingPolicy = CacheBillingFree
 	}
-	return cfg, true
+	if cfg.SemanticThreshold <= 0 || cfg.SemanticThreshold > 1 {
+		cfg.SemanticThreshold = semanticCacheDefaultThreshold
+	}
+	if cfg.SemanticTTLSec <= 0 {
+		cfg.SemanticTTLSec = semanticCacheDefaultTTL
+	}
+	// The bool return gates the exact-cache path specifically; semantic
+	// cache is gated independently by cfg.SemanticEnabled at its call site,
+	// since the two caches operate on different digests/backends.
+	return cfg, cfg.ExactEnabled
 }
 
 // cachedResponse is the stored IR-level value plus provenance.
@@ -147,9 +166,10 @@ func cacheStore(rdb *redis.Client, digest string, entry *cachedResponse, ttlSec 
 
 // writeCachedResponse serves a hit — as JSON, or replayed as a synthetic
 // SSE stream when the client asked for streaming (clients built for
-// streaming must not break because a cache answered).
-func writeCachedResponse(w http.ResponseWriter, entry *cachedResponse, isStream bool, modelName string) {
-	w.Header().Set("X-AIGW-Cache", "hit-exact")
+// streaming must not break because a cache answered). cacheType is "exact"
+// or "semantic" (docs/design/07-caching-strategies.md hit-path header).
+func writeCachedResponse(w http.ResponseWriter, entry *cachedResponse, isStream bool, modelName, cacheType string) {
+	w.Header().Set("X-AIGW-Cache", "hit-"+cacheType)
 	if !isStream {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

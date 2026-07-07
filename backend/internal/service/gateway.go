@@ -10,6 +10,7 @@ import (
 
 	"github.com/opscenter/ai-gateway/internal/biz"
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/opscenter/ai-gateway/internal/middleware"
 )
 
 // GatewayService wraps GatewayUseCase and provides HTTP handler methods.
@@ -109,6 +110,11 @@ func (s *GatewayService) CreateVirtualKey(w http.ResponseWriter, r *http.Request
 
 func (s *GatewayService) RevealVirtualKey(w http.ResponseWriter, r *http.Request) {
 	id := uintQuery(r, "id")
+	// RBAC (docs/design/04): reveal is Owner/Admin only, checked against the
+	// key's own tenant so a tenant admin can't reveal another tenant's key.
+	if !middleware.RequireRole(w, r, s.uc.KeyTenantID(r.Context(), id), "admin") {
+		return
+	}
 	resp, err := s.uc.RevealVirtualKey(r.Context(), id)
 	if err != nil {
 		failWithErr(w, err)

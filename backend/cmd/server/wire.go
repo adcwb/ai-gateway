@@ -26,10 +26,13 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		provideAI,
 		provideSystem,
 		provideServer,
+		provideAuth,
+		provideAudit,
 		observability.NewMetrics,
 		data.ProviderSet,
 		biz.ProviderSet,
 		service.NewGatewayService,
+		service.NewAuthService,
 		server.ProviderSet,
 		newApp,
 	))

@@ -29,7 +29,30 @@ observability:
   otlp_insecure: true         # skip TLS for the OTLP exporter (local collector sidecar)
   trace_sample_ratio: 0.01    # parent-based ratio sampler; force-sampled via X-AIGW-Trace-Force + admin_token
 
+auth:
+  # OIDC/SSO console login (docs/design/04-multi-tenancy-and-auth.md). Empty
+  # oidc_issuer disables SSO entirely — the bootstrap admin_token remains the
+  # only principal, exactly today's behavior.
+  oidc_issuer: ""             # e.g. "https://accounts.google.com" or your IdP's issuer URL
+  oidc_client_id: ""
+  oidc_client_secret: ""
+  oidc_redirect_url: ""       # e.g. "https://gateway.example.com/ai/gateway/auth/callback"
+  oidc_role_claim: "groups"   # ID-token claim consulted for JIT role assignment
+  oidc_default_role: "viewer" # fallback when the claim is absent/unmapped
+  oidc_default_tenant: ""     # empty = the "default" tenant
+  session_secret: ""          # HMAC key for the console session JWT; empty = reuse system.encryption_key
+  session_ttl_hours: 24
+
+audit:
+  # docs/design/06-security-and-guardrails.md "Audit body encryption". AES-GCM
+  # (system.encryption_key) over prompt/response bodies at rest. Opt-in because
+  # encrypted bodies are excluded from ES full-text indexing — choose
+  # searchability or at-rest encryption per your compliance posture.
+  encrypt_bodies: false
+
 # Every key above can be overridden via environment variables:
 # AIGW_HTTP_ADDR, AIGW_METRICS_ADDR, AIGW_DB_DRIVER, AIGW_DB_DSN,
 # AIGW_REDIS_ADDR, AIGW_REDIS_PASSWORD, AIGW_ENCRYPTION_KEY, AIGW_ADMIN_TOKEN,
-# AIGW_ALERT_WEBHOOK, AIGW_OTLP_ENDPOINT, AIGW_OTLP_INSECURE, AIGW_TRACE_SAMPLE_RATIO
+# AIGW_ALERT_WEBHOOK, AIGW_OTLP_ENDPOINT, AIGW_OTLP_INSECURE, AIGW_TRACE_SAMPLE_RATIO,
+# AIGW_OIDC_ISSUER, AIGW_OIDC_CLIENT_ID, AIGW_OIDC_CLIENT_SECRET, AIGW_OIDC_REDIRECT_URL,
+# AIGW_SESSION_SECRET, AIGW_AUDIT_ENCRYPT_BODIES

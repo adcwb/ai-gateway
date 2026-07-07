@@ -38,16 +38,18 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	metrics := observability.NewMetrics()
 
 	// ES client is optional; pass nil to use Redis spill queue when ES is unavailable.
-	auditWorker := biz.NewAuditWorker(db, rdb, nil, logger)
+	auditWorker := biz.NewAuditWorker(db, rdb, nil, bc.Audit, bc.System, logger)
 	quotaManager := biz.NewQuotaManager(rdb, db, logger)
 	routerManager := biz.NewRouterManager(rdb, db, metrics, logger)
 	billingManager := biz.NewBillingManager(db, rdb, metrics, bc.System, logger)
 	gatewayUseCase := biz.NewGatewayUseCase(db, rdb, quotaManager, auditWorker, routerManager, billingManager, metrics, bc.AI, bc.System, logger)
+	authUseCase := biz.NewAuthUseCase(db, bc.Auth, bc.System, logger)
 
 	gatewayService := service.NewGatewayService(gatewayUseCase, billingManager)
+	authService := service.NewAuthService(authUseCase)
 
 	readyChecker := server.NewReadyChecker(db, rdb)
-	httpSrv := server.NewHTTPServer(bc.Server, bc.System, gatewayService, gatewayUseCase, quotaManager, readyChecker, logger)
+	httpSrv := server.NewHTTPServer(bc.Server, bc.System, gatewayService, authService, authUseCase, gatewayUseCase, quotaManager, readyChecker, logger)
 	kratosServer := server.NewKratosServer(bc.Server, httpSrv, metrics, readyChecker, auditWorker, gatewayUseCase, logger)
 
 	app := newApp(logger, kratosServer)
@@ -61,3 +63,5 @@ func provideRedis(bc *conf.Bootstrap) *conf.Redis       { return bc.Redis }
 func provideAI(bc *conf.Bootstrap) *conf.AI             { return bc.AI }
 func provideSystem(bc *conf.Bootstrap) *conf.System     { return bc.System }
 func provideServer(bc *conf.Bootstrap) *conf.Server     { return bc.Server }
+func provideAuth(bc *conf.Bootstrap) *conf.Auth         { return bc.Auth }
+func provideAudit(bc *conf.Bootstrap) *conf.Audit       { return bc.Audit }

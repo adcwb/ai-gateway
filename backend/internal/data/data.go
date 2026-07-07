@@ -84,6 +84,11 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIPriceTable{},
 		&model.AIPriceTableItem{},
 		&model.AISetting{},
+		&model.AIUser{},
+		&model.AIUserTenantRole{},
+		&model.AIAdminKey{},
+		&model.AIAdminAuditLog{},
+		&model.AIMCPServer{},
 	)
 }
 

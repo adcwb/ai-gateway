@@ -29,6 +29,8 @@ type CreateVirtualKeyReq struct {
 	Description        string          `json:"description"`
 	TenantID           uint            `json:"tenantId"`     // 0 = default tenant
 	ProjectRefID       uint            `json:"projectRefId"` // 0 = default project
+	CacheConfig        json.RawMessage `json:"cacheConfig"`  // docs/design/07-caching-strategies.md
+	ToolWhitelist      json.RawMessage `json:"toolWhitelist"` // docs/design/09-extensibility.md; empty = unrestricted
 }
 
 type CreateVirtualKeyResp struct {
@@ -58,6 +60,8 @@ type UpdateVirtualKeyReq struct {
 	ProjectName        *string         `json:"projectName"`
 	EnvID              *string         `json:"envId"`
 	Description        string          `json:"description"`
+	CacheConfig        json.RawMessage `json:"cacheConfig"`
+	ToolWhitelist      json.RawMessage `json:"toolWhitelist"`
 }
 
 type UpdateVirtualKeyStatusReq struct {

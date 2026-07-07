@@ -6,6 +6,7 @@ import (
 
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
 	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/opscenter/ai-gateway/internal/middleware"
 )
 
 // Tenancy + billing + stats handlers (admin-authenticated).
@@ -66,6 +67,10 @@ func (s *GatewayService) Recharge(w http.ResponseWriter, r *http.Request) {
 		failWith(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
+	// RBAC (docs/design/04): recharge is Owner/Admin of that tenant.
+	if !middleware.RequireRole(w, r, req.TenantID, "admin") {
+		return
+	}
 	acct, err := s.bm.Recharge(r.Context(), req.TenantID, req.Credits, req.IdempotencyKey, "manual", req.Remark)
 	if err != nil {
 		failWithErr(w, err)
@@ -78,6 +83,9 @@ func (s *GatewayService) UpdateBillingAccount(w http.ResponseWriter, r *http.Req
 	var req dto.UpdateBillingAccountReq
 	if err := decodeJSON(r, &req); err != nil {
 		failWith(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if !middleware.RequireRole(w, r, req.TenantID, "admin") {
 		return
 	}
 	updates := map[string]interface{}{}

@@ -27,6 +27,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/opscenter/ai-gateway/internal/biz/vectorindex"
 	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 	"github.com/opscenter/ai-gateway/internal/observability"
@@ -46,6 +47,11 @@ type GatewayUseCase struct {
 	sysCfg  *conf.System
 	logger  *log.Helper
 	rawLog  log.Logger
+
+	// vectorIndex is lazily constructed on first semantic-cache use, at the
+	// operator-configured embedding dimensionality (internal/biz/semantic_cache.go).
+	vectorIndex    vectorindex.Index
+	vectorIndexDim int
 }
 
 // NewGatewayUseCase constructs a GatewayUseCase via Wire DI.
@@ -133,6 +139,8 @@ func (uc *GatewayUseCase) CreateVirtualKey(ctx context.Context, req dto.CreateVi
 		Description:        req.Description,
 		TenantID:           req.TenantID,
 		ProjectRefID:       req.ProjectRefID,
+		CacheConfig:        datatypes.JSON(req.CacheConfig),
+		ToolWhitelist:      datatypes.JSON(req.ToolWhitelist),
 	}
 	if vk.TenantID == 0 { // attach to the default tenant so billing always has an owner
 		var defTenant model.AITenant
@@ -179,6 +187,17 @@ func (uc *GatewayUseCase) CreateVirtualKey(ctx context.Context, req dto.CreateVi
 }
 
 // RevealVirtualKey 解密并返回虚拟 Key 明文
+// KeyTenantID looks up a virtual key's tenant for an RBAC check before the
+// caller decides whether the action is allowed (0 if the key doesn't exist —
+// callers should let the subsequent not-found error surface normally).
+func (uc *GatewayUseCase) KeyTenantID(ctx context.Context, id uint) uint {
+	var vk model.AIVirtualKey
+	if err := uc.db.WithContext(ctx).Select("tenant_id").First(&vk, id).Error; err != nil {
+		return 0
+	}
+	return vk.TenantID
+}
+
 func (uc *GatewayUseCase) RevealVirtualKey(ctx context.Context, id uint) (dto.RevealVirtualKeyResp, error) {
 	var vk model.AIVirtualKey
 	if err := uc.db.WithContext(ctx).First(&vk, id).Error; err != nil {
@@ -316,6 +335,15 @@ func (uc *GatewayUseCase) UpdateVirtualKey(ctx context.Context, req dto.UpdateVi
 	}
 	if req.IsEnabled != nil {
 		updates["is_enabled"] = *req.IsEnabled
+	}
+	if len(req.CacheConfig) > 0 {
+		// Only touch cache_config when the caller actually sent one — the
+		// console's key-edit form doesn't have cache fields yet, and an
+		// absent field must not silently clear an existing configuration.
+		updates["cache_config"] = datatypes.JSON(req.CacheConfig)
+	}
+	if len(req.ToolWhitelist) > 0 {
+		updates["tool_whitelist"] = datatypes.JSON(req.ToolWhitelist)
 	}
 	err = uc.db.WithContext(ctx).Model(&model.AIVirtualKey{}).
 		Where("id = ?", req.ID).Updates(updates).Error
@@ -618,11 +646,40 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				uc.billing.RecordUsage(tenantID, key.ID, entry.ProviderID, realModelName, 0, 0, 0, 0, hitPrice, true)
 			}
 			uc.writeAuditLog(ctx, key, entry.ProviderID, realModelName, body, entry.Body, entry.Prompt, entry.Completion, entry.CacheRead, 0, time.Since(startTime).Milliseconds(), http.StatusOK, "cache-hit-exact", false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
-			writeCachedResponse(w, entry, extractStreamFlag(body), realModelName)
+			writeCachedResponse(w, entry, extractStreamFlag(body), realModelName, "exact")
 			return
 		}
 		if uc.metrics != nil {
 			uc.metrics.CacheRequests.WithLabelValues("exact", "miss").Inc()
+		}
+	}
+
+	// 语义缓存（P2，docs/design/07-caching-strategies.md）：精确缓存未命中后按
+	// 余弦相似度匹配语义等价的历史请求；同样护栏之后、路由之前，按命中策略计费。
+	var semanticState *semanticCacheState
+	if cacheCfg.SemanticEnabled && cacheableRequest(r.URL.Path, body) {
+		var semHit *cachedResponse
+		var similarity float64
+		semanticState, semHit, similarity = uc.semanticCacheLookup(ctx, tenantID, realModelName, cacheCfg, body)
+		if semHit != nil {
+			if uc.metrics != nil {
+				uc.metrics.CacheRequests.WithLabelValues("semantic", "hit").Inc()
+			}
+			var hitPrice int64
+			if freeze != nil && freeze.Account != nil {
+				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, semHit.ProviderID, realModelName, semHit.Prompt, semHit.Completion, semHit.CacheRead)
+				hitPrice = cacheHitPriceMicro(fullPrice, cacheCfg)
+				uc.billing.Settle(ctx, freeze, requestID, hitPrice, "", "cache-hit model="+realModelName)
+			}
+			if uc.billing != nil {
+				uc.billing.RecordUsage(tenantID, key.ID, semHit.ProviderID, realModelName, 0, 0, 0, 0, hitPrice, true)
+			}
+			uc.writeAuditLog(ctx, key, semHit.ProviderID, realModelName, body, semHit.Body, semHit.Prompt, semHit.Completion, semHit.CacheRead, 0, time.Since(startTime).Milliseconds(), http.StatusOK, fmt.Sprintf("cache-hit-semantic sim=%.4f", similarity), false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			writeCachedResponse(w, semHit, extractStreamFlag(body), realModelName, "semantic")
+			return
+		}
+		if uc.metrics != nil {
+			uc.metrics.CacheRequests.WithLabelValues("semantic", "miss").Inc()
 		}
 	}
 
@@ -851,39 +908,65 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				w.Write([]byte(`{"error":{"message":"upstream response translation failed"}}`))
 				respBody = raw
 			} else {
+				var blocked bool
+				ctx, translated, blocked = uc.applyOutboundGuardrail(ctx, key, translated)
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
+				if blocked {
+					w.WriteHeader(http.StatusBadRequest)
+				} else {
+					w.WriteHeader(http.StatusOK)
+				}
 				w.Write(translated)
 				respBody = translated
 				promptTokens, completionTokens, cachedTokens = p, c, cached
 			}
 		}
-	} else {
+	} else if respIsStream {
 		for k, vv := range resp.Header {
 			for _, v := range vv {
 				w.Header().Add(k, v)
 			}
 		}
 		w.WriteHeader(resp.StatusCode)
-
-		if isStream && !respIsStream {
+		respBody, promptTokens, completionTokens, cachedTokens, streamErr = streamProxy(w, resp.Body)
+		if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
+			p, c, cached := parseUsageFromBody(respBody)
+			if p > 0 || c > 0 {
+				promptTokens, completionTokens, cachedTokens = p, c, cached
+			}
+		}
+	} else {
+		if isStream {
 			uc.logger.Warnf("请求声明流式但上游返回非 SSE Content-Type contentType=%s provider=%s",
 				resp.Header.Get("Content-Type"), selectedProvider.provider.Name)
 		}
 
-		if respIsStream {
-			respBody, promptTokens, completionTokens, cachedTokens, streamErr = streamProxy(w, resp.Body)
-			if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
-				p, c, cached := parseUsageFromBody(respBody)
-				if p > 0 || c > 0 {
-					promptTokens, completionTokens, cachedTokens = p, c, cached
-				}
-			}
-		} else {
-			respBody, _ = io.ReadAll(resp.Body)
-			w.Write(respBody)
-			promptTokens, completionTokens, cachedTokens = parseUsageFromBody(respBody)
+		raw, _ := io.ReadAll(resp.Body)
+		promptTokens, completionTokens, cachedTokens = parseUsageFromBody(raw)
+		finalBody := raw
+		blocked := false
+		if resp.StatusCode < 300 {
+			ctx, finalBody, blocked = uc.applyOutboundGuardrail(ctx, key, raw)
 		}
+
+		for k, vv := range resp.Header {
+			// Content-Length must not survive a guardrail rewrite (redact/block
+			// change the body length); let net/http compute it for this single Write.
+			if strings.EqualFold(k, "Content-Length") {
+				continue
+			}
+			for _, v := range vv {
+				w.Header().Add(k, v)
+			}
+		}
+		if blocked {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+		} else {
+			w.WriteHeader(resp.StatusCode)
+		}
+		w.Write(finalBody)
+		respBody = finalBody
 	}
 
 	auditErrMsg := ""
@@ -937,6 +1020,19 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			Model:      realModelName,
 			CreatedAt:  time.Now().Unix(),
 		}, cacheCfg.TTLSec)
+	}
+
+	// 语义缓存写入：复用查找阶段已计算的向量，避免二次调用嵌入模型。
+	if semanticState != nil && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
+		uc.semanticCacheStore(ctx, semanticState, &cachedResponse{
+			Body:       respBody,
+			Prompt:     promptTokens,
+			Completion: completionTokens,
+			CacheRead:  cachedTokens,
+			ProviderID: selectedProvider.provider.ID,
+			Model:      realModelName,
+			CreatedAt:  time.Now().Unix(),
+		})
 	}
 
 	if uc.metrics != nil {
@@ -1551,10 +1647,26 @@ func (uc *GatewayUseCase) fillBodiesFromDB(ctx context.Context, list []model.AIG
 	}
 	for _, b := range bodies {
 		if idx, ok := idxByID[b.AuditLogID]; ok {
-			list[idx].RequestBody = b.RequestBody
-			list[idx].ResponseBody = b.ResponseBody
+			list[idx].RequestBody = uc.decryptAuditBody(b.RequestBody)
+			list[idx].ResponseBody = uc.decryptAuditBody(b.ResponseBody)
 		}
 	}
+}
+
+// decryptAuditBody best-effort AES-GCM decrypts one stored body (docs/design/06
+// P1 "audit body encryption"). No config flag is consulted here — a body that
+// isn't ciphertext simply fails to decrypt and is returned as-is, which
+// correctly handles historical plaintext rows even after encryption is
+// enabled later, without threading the config flag through every read path.
+func (uc *GatewayUseCase) decryptAuditBody(stored string) string {
+	if stored == "" || uc.sysCfg == nil {
+		return stored
+	}
+	plain, err := pkg.DecryptAES(stored, []byte(uc.sysCfg.EncryptionKey))
+	if err != nil {
+		return stored
+	}
+	return plain
 }
 
 func (uc *GatewayUseCase) fillFilesFromDB(ctx context.Context, list []model.AIGatewayAuditLog) {

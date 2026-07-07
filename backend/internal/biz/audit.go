@@ -17,8 +17,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 	"github.com/opscenter/ai-gateway/internal/observability"
+	"github.com/opscenter/ai-gateway/internal/pkg"
 )
 
 const (
@@ -68,24 +70,51 @@ type esRetryTask struct {
 
 // AuditWorker batches audit logs and writes them to MySQL + ES.
 type AuditWorker struct {
-	db          *gorm.DB
-	rdb         *redis.Client
-	es          *elasticsearch.TypedClient
-	logger      *log.Helper
-	auditQueue  chan model.AIGatewayAuditLog
-	esRetryQ    chan esRetryTask
+	db         *gorm.DB
+	rdb        *redis.Client
+	es         *elasticsearch.TypedClient
+	auditCfg   *conf.Audit
+	sysCfg     *conf.System
+	logger     *log.Helper
+	auditQueue chan model.AIGatewayAuditLog
+	esRetryQ   chan esRetryTask
 }
 
 // NewAuditWorker creates an AuditWorker wired with DI dependencies.
-func NewAuditWorker(db *gorm.DB, rdb *redis.Client, esClient *elasticsearch.TypedClient, logger log.Logger) *AuditWorker {
+func NewAuditWorker(db *gorm.DB, rdb *redis.Client, esClient *elasticsearch.TypedClient, auditCfg *conf.Audit, sysCfg *conf.System, logger log.Logger) *AuditWorker {
 	return &AuditWorker{
 		db:         db,
 		rdb:        rdb,
 		es:         esClient,
+		auditCfg:   auditCfg,
+		sysCfg:     sysCfg,
 		logger:     log.NewHelper(logger),
 		auditQueue: make(chan model.AIGatewayAuditLog, auditQueueSize),
 		esRetryQ:   make(chan esRetryTask, retryQueueSize),
 	}
+}
+
+// encryptBodiesEnabled reports whether audit bodies should be AES-GCM
+// encrypted at rest (docs/design/06 P1, opt-in).
+func (w *AuditWorker) encryptBodiesEnabled() bool {
+	return w.auditCfg != nil && w.auditCfg.EncryptBodies
+}
+
+// encryptBody AES-GCM encrypts one body with system.encryption_key when
+// EncryptBodies is on (self-guarded — safe to call unconditionally); an empty
+// input stays empty (no point encrypting "no body"), and an encryption
+// failure logs and falls back to storing plaintext rather than losing the
+// audit row entirely.
+func (w *AuditWorker) encryptBody(plain string) string {
+	if plain == "" || w.sysCfg == nil || !w.encryptBodiesEnabled() {
+		return plain
+	}
+	enc, err := pkg.EncryptAES(plain, []byte(w.sysCfg.EncryptionKey))
+	if err != nil {
+		w.logger.Warnf("audit: 审计正文加密失败，回退为明文存储 err=%v", err)
+		return plain
+	}
+	return enc
 }
 
 // Start launches all background goroutines. Must be called once after construction.
@@ -176,11 +205,16 @@ func (w *AuditWorker) processBatch(ctx context.Context, logs []model.AIGatewayAu
 		trace.WithAttributes(attribute.Int("audit.batch_size", len(logs))))
 	defer persistSpan.End()
 
+	// Encrypted bodies are excluded from ES full-text indexing (docs/design/06
+	// P1 trade-off) — leave these blank rather than indexing ciphertext, which
+	// would be both unsearchable and a wasted write.
 	requestBodies := make([]string, len(logs))
 	responseBodies := make([]string, len(logs))
-	for i, l := range logs {
-		requestBodies[i] = l.RequestBody
-		responseBodies[i] = l.ResponseBody
+	if !w.encryptBodiesEnabled() {
+		for i, l := range logs {
+			requestBodies[i] = l.RequestBody
+			responseBodies[i] = l.ResponseBody
+		}
 	}
 
 	var writeErr error
@@ -236,8 +270,8 @@ func (w *AuditWorker) insertAuditLogsWithBodies(ctx context.Context, logs []mode
 	reqs := make([]string, len(logs))
 	resps := make([]string, len(logs))
 	for i := range logs {
-		reqs[i] = logs[i].RequestBody
-		resps[i] = logs[i].ResponseBody
+		reqs[i] = w.encryptBody(logs[i].RequestBody)
+		resps[i] = w.encryptBody(logs[i].ResponseBody)
 		logs[i].ID = 0
 	}
 	return w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

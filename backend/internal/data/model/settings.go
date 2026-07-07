@@ -16,3 +16,13 @@ type AISetting struct {
 func (AISetting) TableName() string { return "ai_settings" }
 
 const SettingKeyAlertWebhook = "alert_webhook"
+
+// Semantic cache embedding settings (docs/design/07-caching-strategies.md
+// "Vector backend (ADR)"): embeddings are generated through the gateway
+// itself against an operator-designated provider/model, configured here
+// rather than in config.yaml so it can change without a redeploy.
+const (
+	SettingKeyCacheEmbeddingProviderID = "cache_embedding_provider_id"
+	SettingKeyCacheEmbeddingModel      = "cache_embedding_model"
+	SettingKeyCacheEmbeddingDim        = "cache_embedding_dim"
+)

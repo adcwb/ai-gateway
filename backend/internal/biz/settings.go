@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,13 +50,36 @@ func (uc *GatewayUseCase) GetSettings(ctx context.Context) dto.SettingsResp {
 	if webhook == "" && uc.sysCfg != nil {
 		webhook = uc.sysCfg.AlertWebhook
 	}
-	return dto.SettingsResp{AlertWebhook: webhook, AlertWebhookIsOverride: usingOverride}
+	providerID, _ := strconv.ParseUint(uc.getSetting(ctx, model.SettingKeyCacheEmbeddingProviderID), 10, 64)
+	dim, _ := strconv.Atoi(uc.getSetting(ctx, model.SettingKeyCacheEmbeddingDim))
+	return dto.SettingsResp{
+		AlertWebhook:             webhook,
+		AlertWebhookIsOverride:   usingOverride,
+		CacheEmbeddingProviderID: uint(providerID),
+		CacheEmbeddingModel:      uc.getSetting(ctx, model.SettingKeyCacheEmbeddingModel),
+		CacheEmbeddingDim:        dim,
+	}
 }
 
 // UpdateSettings applies a partial update to console-editable settings.
 func (uc *GatewayUseCase) UpdateSettings(ctx context.Context, req *dto.UpdateSettingsReq) (dto.SettingsResp, error) {
 	if req.AlertWebhook != nil {
 		if err := uc.setSetting(ctx, model.SettingKeyAlertWebhook, strings.TrimSpace(*req.AlertWebhook)); err != nil {
+			return dto.SettingsResp{}, err
+		}
+	}
+	if req.CacheEmbeddingProviderID != nil {
+		if err := uc.setSetting(ctx, model.SettingKeyCacheEmbeddingProviderID, strconv.FormatUint(uint64(*req.CacheEmbeddingProviderID), 10)); err != nil {
+			return dto.SettingsResp{}, err
+		}
+	}
+	if req.CacheEmbeddingModel != nil {
+		if err := uc.setSetting(ctx, model.SettingKeyCacheEmbeddingModel, strings.TrimSpace(*req.CacheEmbeddingModel)); err != nil {
+			return dto.SettingsResp{}, err
+		}
+	}
+	if req.CacheEmbeddingDim != nil {
+		if err := uc.setSetting(ctx, model.SettingKeyCacheEmbeddingDim, strconv.Itoa(*req.CacheEmbeddingDim)); err != nil {
 			return dto.SettingsResp{}, err
 		}
 	}

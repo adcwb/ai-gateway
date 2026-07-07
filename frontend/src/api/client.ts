@@ -328,6 +328,43 @@ export interface UsagePoint {
   priceCredits: number;
 }
 
+export interface AuthConfig {
+  oidcEnabled: boolean;
+}
+
+export interface SessionInfo {
+  userId: number;
+  email: string;
+  displayName: string;
+  isPlatformAdmin: boolean;
+}
+
+export interface UserItem {
+  id: number;
+  email: string;
+  displayName: string;
+  isPlatformAdmin: boolean;
+  isEnabled: boolean;
+  role: string;
+}
+
+export interface AdminKey {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  tenantId: number;
+  role: string;
+  isEnabled: boolean;
+  lastUsedAt?: string | null;
+}
+
+export interface CreateAdminKeyResp {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  plainKey: string;
+}
+
 export interface ModelItem {
   id: number;
   providerId: number;

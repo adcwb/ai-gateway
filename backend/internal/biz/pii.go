@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 )
 
@@ -54,17 +55,20 @@ type piiPolicyCacheEntry struct {
 
 const piiPolicyCacheTTL = time.Minute
 
-// applyPIIPolicy runs the rule-based PII engine (P1-6,
-// docs/design/06-security-and-guardrails.md) for the key's bound policy —
-// falling back to the default policy — and applies its action:
-//
-//	block  → request rejected (caller writes the 400)
-//	redact → request body rewritten with type-preserving masks
-//	log    → findings recorded in audit only, body untouched
+// applyPIIPolicy is the guardrail pipeline's inbound entry point (P1-6 rule
+// engine + P2 pluggable chain, docs/design/06-security-and-guardrails.md).
+// When the resolved policy sets CheckerChain, requests run through the
+// pluggable multi-checker chain (buildChainForPolicy); otherwise this is
+// byte-for-byte the original single-engine behavior — every policy created
+// before the chain existed keeps working exactly as it did.
 func (uc *GatewayUseCase) applyPIIPolicy(ctx context.Context, key *model.AIVirtualKey, body []byte) (context.Context, piiOutput) {
 	policy := uc.resolvePIIPolicy(ctx, key)
 	if policy == nil || !policy.Enabled {
 		return ctx, piiOutput{Blocked: false, NewBody: body}
+	}
+
+	if chain := uc.buildChainForPolicy(policy, uc.tenantNameForKey(ctx, key)); chain != nil {
+		return uc.runInboundChain(ctx, key, policy, chain, body)
 	}
 
 	var cfg piiPolicyRuleConfig
@@ -96,6 +100,163 @@ func (uc *GatewayUseCase) applyPIIPolicy(ctx context.Context, key *model.AIVirtu
 		uc.logger.Warnf("PII 检测命中（仅记录） keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
 		return ctx, piiOutput{Blocked: false, NewBody: body, Types: types}
 	}
+}
+
+// runInboundChain executes the pluggable chain over the raw request body
+// text (same "operate on text, not JSON structure" contract as the legacy
+// engine — a full IR text-parts extraction is future work, see [D02] IR).
+func (uc *GatewayUseCase) runInboundChain(ctx context.Context, key *model.AIVirtualKey, policy *model.AIPIIPolicy, chain *guardrail.Chain, body []byte) (context.Context, piiOutput) {
+	finalText, action, findings := chain.Run(ctx, string(body), guardrail.DirectionInbound, func(f guardrail.Finding) {
+		if uc.metrics != nil {
+			for _, ty := range f.Types {
+				uc.metrics.GuardrailActions.WithLabelValues(ty, string(f.Action)).Inc()
+			}
+		}
+	})
+	if action == guardrail.ActionNone {
+		return ctx, piiOutput{Blocked: false, NewBody: body}
+	}
+	types := strings.Join(allFindingTypes(findings), ",")
+	if uc.metrics != nil {
+		for _, ty := range allFindingTypes(findings) {
+			uc.metrics.GuardrailActions.WithLabelValues(ty, string(action)).Inc()
+		}
+	}
+	switch action {
+	case guardrail.ActionBlock:
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionBlock, types: types})
+		return ctx, piiOutput{Blocked: true, NewBody: body, Types: types}
+	case guardrail.ActionRedact:
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionRedact, types: types})
+		uc.logger.Warnf("guardrail: 命中并脱敏 keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+		return ctx, piiOutput{Blocked: false, NewBody: []byte(finalText), Types: types}
+	default: // log
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionLog, types: types})
+		uc.logger.Warnf("guardrail: 命中（仅记录） keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+		return ctx, piiOutput{Blocked: false, NewBody: body, Types: types}
+	}
+}
+
+// applyOutboundGuardrail runs the outbound leg of the guardrail chain (docs/
+// design/06) against a non-streaming OpenAI-shape response body — purely
+// additive: it is a no-op unless the key's resolved policy configures a
+// CheckerChain, so no existing deployment sees any behavior change.
+func (uc *GatewayUseCase) applyOutboundGuardrail(ctx context.Context, key *model.AIVirtualKey, body []byte) (context.Context, []byte, bool) {
+	policy := uc.resolvePIIPolicy(ctx, key)
+	if policy == nil || !policy.Enabled {
+		return ctx, body, false
+	}
+	chain := uc.buildChainForPolicy(policy, uc.tenantNameForKey(ctx, key))
+	if chain == nil {
+		return ctx, body, false
+	}
+	text := extractAssistantText(body)
+	if text == "" {
+		return ctx, body, false
+	}
+
+	finalText, action, findings := chain.Run(ctx, text, guardrail.DirectionOutbound, func(f guardrail.Finding) {
+		if uc.metrics != nil {
+			for _, ty := range f.Types {
+				uc.metrics.GuardrailActions.WithLabelValues(ty, string(f.Action)).Inc()
+			}
+		}
+	})
+	if action == guardrail.ActionNone {
+		return ctx, body, false
+	}
+
+	types := strings.Join(allFindingTypes(findings), ",")
+	if uc.metrics != nil {
+		for _, ty := range allFindingTypes(findings) {
+			uc.metrics.GuardrailActions.WithLabelValues(ty, string(action)).Inc()
+		}
+	}
+	// Merge with any inbound finding already recorded for this request so the
+	// audit row reflects both legs rather than the outbound check clobbering it.
+	if existing := piiAuditFromCtx(ctx); existing != nil && existing.types != "" {
+		types = existing.types + "," + types
+	}
+
+	switch action {
+	case guardrail.ActionBlock, guardrail.ActionTerminate:
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionBlock, types: types})
+		uc.logger.Warnf("guardrail: 出站响应被拦截 keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+		blocked, _ := json.Marshal(map[string]interface{}{
+			"error": map[string]string{"message": "response blocked by guardrail policy", "code": "GUARDRAIL_BLOCKED"},
+		})
+		return ctx, blocked, true
+	case guardrail.ActionRedact:
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionRedact, types: types})
+		uc.logger.Warnf("guardrail: 出站响应已脱敏 keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+		return ctx, replaceAssistantText(body, finalText), false
+	default: // log
+		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionLog, types: types})
+		return ctx, body, false
+	}
+}
+
+// extractAssistantText / replaceAssistantText target the OpenAI chat.completion
+// shape's choices[0].message.content — the canonical internal representation
+// every dialect's response is normalized to before this point runs, so a
+// single implementation covers openai_compatible, anthropic, and gemini alike.
+func extractAssistantText(body []byte) string {
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Choices) == 0 {
+		return ""
+	}
+	return parsed.Choices[0].Message.Content
+}
+
+func replaceAssistantText(body []byte, newText string) []byte {
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
+	}
+	choices, ok := parsed["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return body
+	}
+	choice0, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return body
+	}
+	message, ok := choice0["message"].(map[string]interface{})
+	if !ok {
+		return body
+	}
+	message["content"] = newText
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func allFindingTypes(findings []guardrail.Finding) []string {
+	var out []string
+	for _, f := range findings {
+		out = append(out, f.Types...)
+	}
+	return out
+}
+
+// tenantNameForKey resolves a display name for the external-checker RPC's
+// tenant_name field (best-effort — an empty result is fine, the field is
+// informational only).
+func (uc *GatewayUseCase) tenantNameForKey(ctx context.Context, key *model.AIVirtualKey) string {
+	tenantID := uc.tenantIDForKey(ctx, key)
+	var t model.AITenant
+	if err := uc.db.WithContext(ctx).Select("name").First(&t, tenantID).Error; err != nil {
+		return ""
+	}
+	return t.Name
 }
 
 // resolvePIIPolicy loads the key's bound policy, else the default policy,

@@ -112,3 +112,13 @@ Every state-changing management call writes an operator audit row (`ai_admin_aud
 - Role matrix table test: each role × each endpoint → expected allow/deny.
 - Upgrade test: a pre-tenancy database snapshot migrates to default-tenant attachment with all keys still resolving on the proxy path.
 - P1 exit criterion: member can view usage but cannot reveal keys or change quotas ([Roadmap](../03-roadmap.md)).
+
+## Implementation notes (ADR addendum)
+
+What shipped, and where it deliberately narrows this document's original scope:
+
+- **No local password accounts.** "Users (P1) / OIDC (P2)" collapsed into one mechanism — OIDC is the *only* login path (JIT-provisioned `AIUser`, no `password_hash` column). A user's role-per-tenant comes from the first role-ranked value in the ID token's `groups`/`roles` claims, falling back to `auth.oidc_default_role`; there's no separate "admin edits a claim-mapping table" UI yet — the mapping is the built-in rank comparison in `AuthUseCase.resolveRole`.
+- **Session = stateless JWT cookie** (`aigw_session`, HMAC via `auth.session_secret` or `system.encryption_key`), not a DB-backed session table — consistent with the project's stateless-instance principle; logout just clears the cookie (no server-side revocation list yet).
+- **RBAC enforcement is targeted, not exhaustive.** `middleware.RequireRole`/`RequirePlatformAdmin` guard exactly the actions named in the RBAC table above (key reveal, provider/price-table/model-item/credits-rate/settings mutation, billing recharge/account update, member/admin-key management). The two-tenant leakage suite and full list-endpoint tenant scoping are *not yet implemented* — every list/read endpoint remains reachable by any authenticated principal regardless of tenant. This is the next increment, not a design change.
+- **Providers/price tables/model catalog/settings/credits-rates are platform-admin-only**, not "tenant Owner/Admin" as the RBAC table's literal row wording could be read — resolving the tension the table left open against the prose ("providers are global objects... belongs to a platform admin flag"). A single-tenant deployment's owner is typically also the platform admin (the bootstrap token), so this is invisible there.
+- Admin API keys carry one `(tenantID, role)` pair rather than multi-tenant membership (`tenantID=0` = platform-wide at that role) — simpler than the `AIUser`/`AIUserTenantRole` many-to-many shape, matching how automation credentials are actually scoped in practice.

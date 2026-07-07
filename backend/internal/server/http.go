@@ -22,6 +22,8 @@ func NewHTTPServer(
 	c *conf.Server,
 	sys *conf.System,
 	gwSvc *service.GatewayService,
+	authSvc *service.AuthService,
+	authUC *biz.AuthUseCase,
 	gwUc *biz.GatewayUseCase,
 	quota *biz.QuotaManager,
 	ready *observability.ReadyChecker,
@@ -29,7 +31,17 @@ func NewHTTPServer(
 ) *http.Server {
 	mux := http.NewServeMux()
 	auth := middleware.NewVirtualKeyAuth(gwUc, quota)
-	admin := middleware.NewAdminAuth(adminToken(sys), logger)
+	admin := middleware.NewAdminAuth(adminToken(sys), authUC, logger)
+
+	// -------------------------------------------------------------------------
+	// SSO/OIDC login flow (docs/design/04-multi-tenancy-and-auth.md) — public
+	// by necessity: this is how a caller obtains a session in the first place.
+	// -------------------------------------------------------------------------
+
+	mux.HandleFunc("GET /ai/gateway/auth/config", authSvc.AuthConfig)
+	mux.HandleFunc("GET /ai/gateway/auth/login", authSvc.Login)
+	mux.HandleFunc("GET /ai/gateway/auth/callback", authSvc.Callback)
+	mux.HandleFunc("POST /ai/gateway/auth/logout", authSvc.Logout)
 
 	// -------------------------------------------------------------------------
 	// Health endpoints (no auth, not audited) — docs/design/05-observability.md
@@ -91,34 +103,56 @@ func NewHTTPServer(
 	mgmt.HandleFunc("GET /ai/gateway/tenants", gwSvc.ListTenants)
 	mgmt.HandleFunc("POST /ai/gateway/projects", gwSvc.CreateProject)
 	mgmt.HandleFunc("GET /ai/gateway/projects", gwSvc.ListProjects)
+	// Recharge/account changes are Owner/Admin of that tenant (docs/design/04
+	// RBAC table); tenantID comes from the request body, checked in-handler.
 	mgmt.HandleFunc("POST /ai/gateway/billing/recharge", gwSvc.Recharge)
 	mgmt.HandleFunc("PUT /ai/gateway/billing/account", gwSvc.UpdateBillingAccount)
 	mgmt.HandleFunc("GET /ai/gateway/billing/ledger", gwSvc.ListLedger)
 	mgmt.HandleFunc("GET /ai/gateway/stats/overview", gwSvc.UsageOverview)
 	mgmt.HandleFunc("GET /ai/gateway/stats/timeseries", gwSvc.UsageTimeseries)
 
-	// P2: model catalog + price tables (docs/design/03,08 module 4)
-	mgmt.HandleFunc("POST /ai/gateway/model-items", gwSvc.CreateModelItem)
+	// P2: model catalog + price tables (docs/design/03,08 module 4) — global
+	// objects, mutation is platform-admin only (docs/design/04).
+	mgmt.HandleFunc("POST /ai/gateway/model-items", middleware.RequirePlatformAdmin(gwSvc.CreateModelItem))
 	mgmt.HandleFunc("GET /ai/gateway/model-items", gwSvc.ListModelItems)
-	mgmt.HandleFunc("PUT /ai/gateway/model-items", gwSvc.UpdateModelItem)
-	mgmt.HandleFunc("DELETE /ai/gateway/model-items", gwSvc.DeleteModelItem)
-	mgmt.HandleFunc("POST /ai/gateway/price-tables", gwSvc.CreatePriceTable)
+	mgmt.HandleFunc("PUT /ai/gateway/model-items", middleware.RequirePlatformAdmin(gwSvc.UpdateModelItem))
+	mgmt.HandleFunc("DELETE /ai/gateway/model-items", middleware.RequirePlatformAdmin(gwSvc.DeleteModelItem))
+	mgmt.HandleFunc("POST /ai/gateway/price-tables", middleware.RequirePlatformAdmin(gwSvc.CreatePriceTable))
 	mgmt.HandleFunc("GET /ai/gateway/price-tables", gwSvc.ListPriceTables)
-	mgmt.HandleFunc("PUT /ai/gateway/price-tables", gwSvc.UpdatePriceTable)
-	mgmt.HandleFunc("DELETE /ai/gateway/price-tables", gwSvc.DeletePriceTable)
-	mgmt.HandleFunc("POST /ai/gateway/price-tables/items", gwSvc.CreatePriceTableItem)
-	mgmt.HandleFunc("PUT /ai/gateway/price-tables/items", gwSvc.UpdatePriceTableItem)
-	mgmt.HandleFunc("DELETE /ai/gateway/price-tables/items", gwSvc.DeletePriceTableItem)
+	mgmt.HandleFunc("PUT /ai/gateway/price-tables", middleware.RequirePlatformAdmin(gwSvc.UpdatePriceTable))
+	mgmt.HandleFunc("DELETE /ai/gateway/price-tables", middleware.RequirePlatformAdmin(gwSvc.DeletePriceTable))
+	mgmt.HandleFunc("POST /ai/gateway/price-tables/items", middleware.RequirePlatformAdmin(gwSvc.CreatePriceTableItem))
+	mgmt.HandleFunc("PUT /ai/gateway/price-tables/items", middleware.RequirePlatformAdmin(gwSvc.UpdatePriceTableItem))
+	mgmt.HandleFunc("DELETE /ai/gateway/price-tables/items", middleware.RequirePlatformAdmin(gwSvc.DeletePriceTableItem))
 	mgmt.HandleFunc("POST /ai/gateway/price-tables/test-pattern", gwSvc.TestPricePattern)
 
-	// P2: settings + credits rates (docs/design/08-web-console.md module 8)
+	// P2: settings + credits rates (docs/design/08-web-console.md module 8) —
+	// global objects, mutation is platform-admin only.
 	mgmt.HandleFunc("GET /ai/gateway/settings", gwSvc.GetSettings)
-	mgmt.HandleFunc("PUT /ai/gateway/settings", gwSvc.UpdateSettings)
-	mgmt.HandleFunc("POST /ai/gateway/settings/test-webhook", gwSvc.TestAlertWebhook)
-	mgmt.HandleFunc("POST /ai/gateway/credits-rates", gwSvc.CreateCreditsRate)
+	mgmt.HandleFunc("PUT /ai/gateway/settings", middleware.RequirePlatformAdmin(gwSvc.UpdateSettings))
+	mgmt.HandleFunc("POST /ai/gateway/settings/test-webhook", middleware.RequirePlatformAdmin(gwSvc.TestAlertWebhook))
+	mgmt.HandleFunc("POST /ai/gateway/credits-rates", middleware.RequirePlatformAdmin(gwSvc.CreateCreditsRate))
 	mgmt.HandleFunc("GET /ai/gateway/credits-rates", gwSvc.ListCreditsRates)
-	mgmt.HandleFunc("PUT /ai/gateway/credits-rates", gwSvc.UpdateCreditsRate)
-	mgmt.HandleFunc("DELETE /ai/gateway/credits-rates", gwSvc.DeleteCreditsRate)
+	mgmt.HandleFunc("PUT /ai/gateway/credits-rates", middleware.RequirePlatformAdmin(gwSvc.UpdateCreditsRate))
+	mgmt.HandleFunc("DELETE /ai/gateway/credits-rates", middleware.RequirePlatformAdmin(gwSvc.DeleteCreditsRate))
+
+	// P3: MCP server registry (docs/design/09-extensibility.md "MCP gateway")
+	// — global objects, mutation is platform-admin only (same posture as
+	// providers/price-tables).
+	mgmt.HandleFunc("POST /ai/gateway/mcp-servers", middleware.RequirePlatformAdmin(gwSvc.CreateMCPServer))
+	mgmt.HandleFunc("GET /ai/gateway/mcp-servers", gwSvc.ListMCPServers)
+	mgmt.HandleFunc("PUT /ai/gateway/mcp-servers", middleware.RequirePlatformAdmin(gwSvc.UpdateMCPServer))
+	mgmt.HandleFunc("DELETE /ai/gateway/mcp-servers", middleware.RequirePlatformAdmin(gwSvc.DeleteMCPServer))
+
+	// P1/P2: users, RBAC, admin API keys (docs/design/04-multi-tenancy-and-auth.md)
+	mgmt.HandleFunc("GET /ai/gateway/auth/me", authSvc.Me)
+	mgmt.HandleFunc("GET /ai/gateway/users", authSvc.ListUsers)
+	mgmt.HandleFunc("PUT /ai/gateway/users/role", authSvc.UpdateUserRole)
+	mgmt.HandleFunc("PUT /ai/gateway/users/status", authSvc.UpdateUserStatus)
+	mgmt.HandleFunc("POST /ai/gateway/admin-keys", authSvc.CreateAdminKey)
+	mgmt.HandleFunc("GET /ai/gateway/admin-keys", authSvc.ListAdminKeys)
+	mgmt.HandleFunc("PUT /ai/gateway/admin-keys", authSvc.UpdateAdminKey)
+	mgmt.HandleFunc("DELETE /ai/gateway/admin-keys", authSvc.DeleteAdminKey)
 
 	mux.Handle("/ai/gateway/", admin.Middleware(mgmt))
 
@@ -138,6 +172,11 @@ func NewHTTPServer(
 	// /ai/v1/models must be registered before /ai/v1/ catch-all
 	mux.Handle("/ai/v1/models", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ListModels))))
 	mux.Handle("/ai/v1/", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest))))
+
+	// MCP gateway (docs/design/09-extensibility.md): same sk-vk-* credential,
+	// same middleware, as model traffic — "one credential system for models
+	// and tools." {serverName} selects the registered upstream MCP server.
+	mux.Handle("/ai/mcp/{serverName}", tracing.Middleware("mcp", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.MCPProxy))))
 
 	addr := ":8080"
 	if c != nil && c.HTTP != nil && c.HTTP.Addr != "" {

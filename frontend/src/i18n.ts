@@ -219,6 +219,22 @@ const dict: Record<string, { en: string; zh: string }> = {
   about: { en: "About", zh: "关于" },
   aboutProject: { en: "Project", zh: "项目" },
   aboutRepo: { en: "Repository", zh: "代码仓库" },
+
+  // ---- Users & Access (D04) --------------------------------------------------
+  usersAccess: { en: "Users & Access", zh: "用户与权限" },
+  or: { en: "or", zh: "或" },
+  ssoLogin: { en: "Sign in with SSO", zh: "使用 SSO 登录" },
+  email: { en: "Email", zh: "邮箱" },
+  role: { en: "Role", zh: "角色" },
+  platformAdmin: { en: "Platform admin", zh: "平台管理员" },
+  removeFromTenant: { en: "Remove", zh: "移除" },
+  emptyUsers: { en: "No members in this tenant", zh: "该租户暂无成员" },
+  emptyUsersSub: { en: "Members appear here after their first SSO login is assigned a role.", zh: "成员首次 SSO 登录并分配角色后会出现在这里。" },
+  adminApiKeys: { en: "Admin API keys", zh: "管理员 API Key" },
+  addAdminKey: { en: "Add admin key", zh: "新增管理员 Key" },
+  platformWide: { en: "Platform-wide", zh: "平台级" },
+  emptyAdminKeys: { en: "No admin API keys yet", zh: "还没有管理员 API Key" },
+  confirmDeleteAdminKey: { en: "Delete this admin API key?", zh: "确认删除该管理员 API Key？" },
 };
 
 export function t(key: string, lang: Lang): string {

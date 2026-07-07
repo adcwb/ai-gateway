@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
-import { clearToken, getToken } from "./api/client";
+import { api, clearToken, getToken } from "./api/client";
 import { getLang, setLang, t, type Lang } from "./i18n";
 import { Icon, type IconName } from "./components/ui";
 import Login from "./pages/Login";
@@ -12,11 +12,12 @@ import Audit from "./pages/Audit";
 import Tenants from "./pages/Tenants";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
+import Users from "./pages/Users";
 
 interface NavItem { to: string; key: string; icon: IconName; end?: boolean }
 
 // Grouped so the eye lands on operate → manage → observe.
-// slice bounds below assume: [0,3) operate, [3,7) manage, [7,) observe.
+// slice bounds below assume: [0,3) operate, [3,8) manage, [8,) observe.
 const NAV: NavItem[] = [
   { to: "/", key: "dashboard", icon: "dashboard", end: true },
   { to: "/keys", key: "keys", icon: "key" },
@@ -24,6 +25,7 @@ const NAV: NavItem[] = [
   { to: "/models-pricing", key: "modelsPricing", icon: "pricetag" },
   { to: "/tenants", key: "tenants", icon: "tenants" },
   { to: "/billing", key: "billing", icon: "billing" },
+  { to: "/users", key: "usersAccess", icon: "users" },
   { to: "/settings", key: "settings", icon: "settings" },
   { to: "/audit", key: "audit", icon: "audit" },
 ];
@@ -31,7 +33,19 @@ const NAV: NavItem[] = [
 export default function App() {
   const [lang, setLangState] = useState<Lang>(getLang());
   const [authed, setAuthed] = useState<boolean>(!!getToken());
+  // SSO logins carry no localStorage token (the session lives in an HttpOnly
+  // cookie) — probe /auth/me once on mount so a page load after an OIDC
+  // redirect (or a refresh mid-session) doesn't bounce back to the login page.
+  const [checkingSession, setCheckingSession] = useState(!getToken());
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (getToken()) return;
+    api.get("/ai/gateway/auth/me")
+      .then(() => setAuthed(true))
+      .catch(() => {})
+      .finally(() => setCheckingSession(false));
+  }, []);
 
   const toggleLang = () => {
     const next: Lang = lang === "en" ? "zh" : "en";
@@ -39,12 +53,17 @@ export default function App() {
     setLangState(next);
   };
 
+  if (checkingSession) {
+    return <div className="login-wrap" />;
+  }
+
   if (!authed) {
     return <Login lang={lang} onLogin={() => setAuthed(true)} onToggleLang={toggleLang} />;
   }
 
   const logout = () => {
     clearToken();
+    api.post("/ai/gateway/auth/logout").catch(() => {});
     setAuthed(false);
     navigate("/");
   };
@@ -67,13 +86,13 @@ export default function App() {
           </NavLink>
         ))}
         <div className="nav-eyebrow">{t("navManage", lang)}</div>
-        {NAV.slice(3, 7).map((n) => (
+        {NAV.slice(3, 8).map((n) => (
           <NavLink key={n.to} to={n.to}>
             <Icon name={n.icon} size={16} /> {t(n.key, lang)}
           </NavLink>
         ))}
         <div className="nav-eyebrow">{t("navObserve", lang)}</div>
-        {NAV.slice(7).map((n) => (
+        {NAV.slice(8).map((n) => (
           <NavLink key={n.to} to={n.to}>
             <Icon name={n.icon} size={16} /> {t(n.key, lang)}
           </NavLink>
@@ -100,6 +119,7 @@ export default function App() {
           <Route path="/audit" element={<Audit lang={lang} />} />
           <Route path="/tenants" element={<Tenants lang={lang} />} />
           <Route path="/billing" element={<Billing lang={lang} />} />
+          <Route path="/users" element={<Users lang={lang} />} />
           <Route path="/settings" element={<Settings lang={lang} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

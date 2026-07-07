@@ -27,6 +27,15 @@ type AIPIIPolicy struct {
 	RuleConfig  datatypes.JSON `gorm:"type:json" json:"ruleConfig"`
 	Description string         `gorm:"type:varchar(256)" json:"description"`
 
+	// CheckerChain generalizes this policy into the pluggable guardrail
+	// pipeline (docs/design/06-security-and-guardrails.md P2): an ordered
+	// []{"name","settings"} list. Empty/absent preserves the exact legacy
+	// behavior above (single pii_rules engine, RuleConfig + Action) — this
+	// column is purely additive, no existing policy's behavior changes.
+	CheckerChain datatypes.JSON `gorm:"column:checker_chain;type:json" json:"checkerChain"`
+	// FailMode is "open" (default) or "closed" — see guardrail.ChainOption.FailOpen.
+	FailMode string `gorm:"column:fail_mode;type:varchar(8);default:'open'" json:"failMode"`
+
 	BoundKeyCount int64 `gorm:"-" json:"boundKeyCount"`
 }
 

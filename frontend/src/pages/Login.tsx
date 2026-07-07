@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, setToken } from "../api/client";
+import { useEffect, useState } from "react";
+import { api, setToken, type AuthConfig } from "../api/client";
 import { t, type Lang } from "../i18n";
 import { Icon, type IconName } from "../components/ui";
 
@@ -20,6 +20,11 @@ export default function Login({ lang, onLogin, onToggleLang }: Props) {
   const [token, setTokenInput] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+
+  useEffect(() => {
+    api.get<AuthConfig>("/ai/gateway/auth/config").then((c) => setOidcEnabled(c.oidcEnabled)).catch(() => {});
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +83,14 @@ export default function Login({ lang, onLogin, onToggleLang }: Props) {
             {busy ? <Icon name="refresh" size={14} className="spin" /> : <Icon name="logout" size={14} />}{" "}
             {t("login", lang)}
           </button>
+          {oidcEnabled && (
+            <>
+              <div className="sub" style={{ textAlign: "center", margin: "4px 0" }}>{t("or", lang)}</div>
+              <button type="button" className="ghost" onClick={() => { window.location.href = "/ai/gateway/auth/login"; }}>
+                <Icon name="globe" size={14} /> {t("ssoLogin", lang)}
+              </button>
+            </>
+          )}
           <button type="button" className="ghost" onClick={onToggleLang}>
             <Icon name="globe" size={14} /> {lang === "en" ? "中文" : "English"}
           </button>

@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package guardrail.v1;
+
+option go_package = "github.com/opscenter/ai-gateway/api/guardrail/v1;guardrailv1";
+
+// GuardrailEngine is the contract an operator's external detection service
+// implements (docs/design/06-security-and-guardrails.md, P2 "external"
+// checker) — Microsoft Presidio, a cloud DLP API, or an in-house engine, all
+// behind this one RPC. The gateway is the client; this repo does not ship a
+// server implementation.
+service GuardrailEngine {
+  rpc Check(CheckRequest) returns (CheckResponse);
+}
+
+message CheckRequest {
+  // text is the decoded IR message text (not raw JSON) — same content shape
+  // the built-in pii_rules checker inspects.
+  string text = 1;
+  // direction is "inbound" or "outbound" (guardrail.Direction).
+  string direction = 2;
+  string tenant_name = 3;
+  // checker_name lets one engine serve multiple configured checker instances
+  // (e.g. distinct policies) differently if it chooses to.
+  string checker_name = 4;
+}
+
+message CheckResponse {
+  // action is "none" | "log" | "redact" | "block" (guardrail.Action).
+  string action = 1;
+  // types are finding categories for audit (e.g. "person_name", "address").
+  repeated string types = 2;
+  // redacted_text is populated when action == "redact".
+  string redacted_text = 3;
+  string details = 4;
+}
