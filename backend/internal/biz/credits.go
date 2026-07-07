@@ -66,6 +66,12 @@ func getModelPriceEntry(ctx context.Context, db *gorm.DB, logger *log.Helper, pr
 	return entry
 }
 
+// invalidateModelPriceCache drops the cached cost entry so a console edit to
+// AIModelItem pricing takes effect immediately rather than waiting out modelPriceTTL.
+func invalidateModelPriceCache(providerID uint, modelName string) {
+	modelPriceCache.Delete(fmt.Sprintf("%d:%s", providerID, modelName))
+}
+
 func getCNYRatePerCredit(ctx context.Context, db *gorm.DB, rdb *redis.Client) float64 {
 	const redisKey = "ai:gw:credits:rate:CNY"
 

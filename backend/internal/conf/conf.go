@@ -2,15 +2,17 @@ package conf
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
 type Bootstrap struct {
-	Server   *Server   `yaml:"server"`
-	Database *Database `yaml:"database"`
-	Redis    *Redis    `yaml:"redis"`
-	AI       *AI       `yaml:"ai"`
-	System   *System   `yaml:"system"`
+	Server        *Server        `yaml:"server"`
+	Database      *Database      `yaml:"database"`
+	Redis         *Redis         `yaml:"redis"`
+	AI            *AI            `yaml:"ai"`
+	System        *System        `yaml:"system"`
+	Observability *Observability `yaml:"observability"`
 }
 
 type Server struct {
@@ -58,6 +60,16 @@ type System struct {
 	AlertWebhook string `yaml:"alert_webhook"`
 }
 
+// Observability configures OpenTelemetry tracing (docs/design/05-observability.md).
+// An empty OTLPEndpoint disables tracing entirely: SetupTracing constructs no
+// exporter/processor and the global OTel no-op TracerProvider stays in place,
+// so instrumentation call sites cost a few no-op function calls.
+type Observability struct {
+	OTLPEndpoint string  `yaml:"otlp_endpoint"`
+	Insecure     bool    `yaml:"otlp_insecure"`
+	SampleRatio  float64 `yaml:"trace_sample_ratio"`
+}
+
 // ApplyEnvOverrides maps AIGW_* environment variables onto config fields so
 // secrets never need to live in the YAML file (compose / k8s ergonomics).
 func (bc *Bootstrap) ApplyEnvOverrides() {
@@ -87,6 +99,17 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	}
 	if v := os.Getenv("AIGW_ALERT_WEBHOOK"); v != "" {
 		bc.ensureSystem().AlertWebhook = v
+	}
+	if v := os.Getenv("AIGW_OTLP_ENDPOINT"); v != "" {
+		bc.ensureObservability().OTLPEndpoint = v
+	}
+	if v := os.Getenv("AIGW_OTLP_INSECURE"); v != "" {
+		bc.ensureObservability().Insecure = v == "true" || v == "1"
+	}
+	if v := os.Getenv("AIGW_TRACE_SAMPLE_RATIO"); v != "" {
+		if ratio, err := strconv.ParseFloat(v, 64); err == nil {
+			bc.ensureObservability().SampleRatio = ratio
+		}
 	}
 }
 
@@ -122,4 +145,11 @@ func (bc *Bootstrap) ensureSystem() *System {
 		bc.System = &System{}
 	}
 	return bc.System
+}
+
+func (bc *Bootstrap) ensureObservability() *Observability {
+	if bc.Observability == nil {
+		bc.Observability = &Observability{}
+	}
+	return bc.Observability
 }

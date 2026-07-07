@@ -83,6 +83,7 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIUsageDaily{},
 		&model.AIPriceTable{},
 		&model.AIPriceTableItem{},
+		&model.AISetting{},
 	)
 }
 

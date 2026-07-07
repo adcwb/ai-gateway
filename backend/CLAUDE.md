@@ -4,7 +4,7 @@ Guidance for working on the Go gateway. Repo-wide context lives in the root `CLA
 
 ## Technology stack
 
-- **Go 1.23** · **Kratos v2** (HTTP lifecycle + logging) · **Wire** (compile-time DI)
+- **Go 1.25** (bumped from 1.23 when the OpenTelemetry SDK was added; `go-version-file: backend/go.mod` in CI tracks it automatically) · **Kratos v2** (HTTP lifecycle + logging) · **Wire** (compile-time DI)
 - **GORM** with MySQL (default) / PostgreSQL / SQLite (`glebarez`, pure-Go, demo only) — selected by `database.driver`
 - **Redis** (go-redis v9): quotas, concurrency slots, circuit breaker, billing gate, response cache, key-cache L2, pub/sub invalidation
 - **Prometheus** client on a dedicated listener; **Elasticsearch** optional for audit bodies
@@ -54,8 +54,8 @@ wire ./cmd/server                # after changing any ProviderSet
 | `biz/tenant.go` | tenants/projects, default-tenant bootstrap + legacy backfill |
 | `biz/audit.go` | batched async audit workers, ES spill/retry |
 | `biz/key_cache.go` | L1 sync.Map + L2 Redis + pub/sub invalidation (`ai:gw:key:invalidate`) |
-| `observability/` | Prometheus instrument set (cardinality rule: never per-key labels), `ReadyChecker` |
-| `middleware/` | `virtual_key_auth.go` (proxy), `admin_auth.go` (static admin token, constant-time) |
+| `observability/` | Prometheus instrument set (cardinality rule: never per-key labels), `ReadyChecker`, OTel `SetupTracing`/`Tracer` (D05) |
+| `middleware/` | `virtual_key_auth.go` (proxy), `admin_auth.go` (static admin token, constant-time), `tracing.go` (`aigw.request` root span) |
 | `console/` | `embed.FS` of the built frontend; placeholder committed, `make embed` refreshes |
 
 ## Code standards (Kratos conventions — enforced in review)
@@ -105,8 +105,16 @@ Service handlers use `failWithErr(w, err)` (extracts HTTP status via `kerrors.Fr
 
 ## Environment & config
 
-All `configs/config.yaml` keys overridable via `AIGW_*` env vars (`conf.ApplyEnvOverrides`): `AIGW_HTTP_ADDR`, `AIGW_METRICS_ADDR`, `AIGW_DB_DRIVER`, `AIGW_DB_DSN`, `AIGW_REDIS_ADDR`, `AIGW_REDIS_PASSWORD`, `AIGW_ENCRYPTION_KEY` (exactly 32 bytes), `AIGW_ADMIN_TOKEN` (empty ⇒ open management plane + startup warning).
+All `configs/config.yaml` keys overridable via `AIGW_*` env vars (`conf.ApplyEnvOverrides`): `AIGW_HTTP_ADDR`, `AIGW_METRICS_ADDR`, `AIGW_DB_DRIVER`, `AIGW_DB_DSN`, `AIGW_REDIS_ADDR`, `AIGW_REDIS_PASSWORD`, `AIGW_ENCRYPTION_KEY` (exactly 32 bytes), `AIGW_ADMIN_TOKEN` (empty ⇒ open management plane + startup warning), `AIGW_OTLP_ENDPOINT` / `AIGW_OTLP_INSECURE` / `AIGW_TRACE_SAMPLE_RATIO` (tracing, empty endpoint ⇒ disabled).
+
+## OpenTelemetry tracing (D05)
+
+`internal/observability/tracing.go`: `SetupTracing` (called directly from `cmd/server/main.go`, not through Wire — it's a process-global concern like the logger) builds an OTLP/gRPC exporter + `ParentBased` ratio sampler when `observability.otlp_endpoint` is set; otherwise the global no-op `TracerProvider` stays in place and every `observability.Tracer.Start(...)` call is a no-op. Span topology: `aigw.request` (root, `middleware/tracing.go`) → `aigw.auth` (`virtual_key_auth.go`) / `aigw.route` / `aigw.upstream` per attempt / `aigw.settle` (all in `biz/gateway.go`), plus an async `aigw.audit.persist` span **linked** (not parented) to each batched request via the `trace_id`/`span_id` columns now on `ai_gateway_audit_logs`. Force-sample debugging: header `X-AIGW-Trace-Force` compared against `system.admin_token`.
+
+## Active health probes (D01)
+
+`internal/biz/health_probe.go`: `GatewayUseCase.StartActiveHealthProbes` (launched from `StartBackgroundWorkers`) ticks every 10s and, for any enabled provider with `breaker_config.activeProbeEnabled=true` whose breaker is **not** closed, calls the same `RouterManager.TryPass`/`ReportResult` pair a real attempt would against a lightweight dialect-appropriate request — closing the gap where a provider ranked behind enough healthy candidates never gets another live attempt (and so never recovers) even after its outage clears. Off by default per provider; toggle via `activeProbeEnabled`/`activeProbeIntervalSec` on the provider create/update API.
 
 ## Known gaps in this package (see root CLAUDE.md "Feature status")
 
-SSO/OIDC (user system intentionally skipped; admin token is the only principal), tenant-scoped management queries, payment gateways/subscriptions/invoices, inbound Anthropic/Responses endpoints, Bedrock adapter (needs SigV4), active health probes, semantic cache, external PII engine, OTel tracing, audit-body encryption, ES config wiring (client is nil in wire_gen).
+SSO/OIDC (user system intentionally skipped; admin token is the only principal), tenant-scoped management queries, payment gateways/subscriptions/invoices, inbound Anthropic/Responses endpoints, Bedrock adapter (needs SigV4), semantic cache, external PII engine, audit-body encryption, ES config wiring (client is nil in wire_gen).

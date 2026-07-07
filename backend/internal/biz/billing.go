@@ -350,7 +350,7 @@ func (bm *BillingManager) postBalanceChecks(ctx context.Context, acct *model.AIB
 			bm.setStatus(ctx, acct, model.BillingStatusSuspended, nil)
 			bm.logger.Warnf("billing: 账户已欠费停用 acct=%d tenant=%d", acct.ID, acct.TenantID)
 		}
-		bm.sendAlert("account_"+acct.Status, acct)
+		bm.sendAlert(ctx, "account_"+acct.Status, acct)
 	case headroom > 0 && acct.Status != model.BillingStatusActive:
 		bm.setStatus(ctx, acct, model.BillingStatusActive, nil)
 		bm.logger.Infof("billing: 账户恢复 active acct=%d tenant=%d", acct.ID, acct.TenantID)
@@ -366,7 +366,7 @@ func (bm *BillingManager) postBalanceChecks(ctx context.Context, acct *model.AIB
 			if bm.metrics != nil {
 				bm.metrics.BillingRejections.WithLabelValues("budget_alert").Inc()
 			}
-			bm.sendAlert("budget_alert", acct)
+			bm.sendAlert(ctx, "budget_alert", acct)
 		}
 	}
 }
@@ -643,8 +643,12 @@ func billingErrorBody(msg string) string {
 
 // sendAlert POSTs a billing event to the configured webhook (best-effort,
 // async, 5s timeout). Event types: budget_alert / account_grace / account_suspended.
-func (bm *BillingManager) sendAlert(eventType string, acct *model.AIBillingAccount) {
-	if bm.sysCfg == nil || strings.TrimSpace(bm.sysCfg.AlertWebhook) == "" {
+// The webhook URL is resolved via the console-editable ai_settings override
+// first (docs/design/08-web-console.md module 8), falling back to the static
+// system.alert_webhook config — not hot-path, so the extra DB read is fine.
+func (bm *BillingManager) sendAlert(ctx context.Context, eventType string, acct *model.AIBillingAccount) {
+	url := bm.resolveAlertWebhook(ctx)
+	if url == "" {
 		return
 	}
 	payload, _ := json.Marshal(map[string]interface{}{
@@ -655,7 +659,6 @@ func (bm *BillingManager) sendAlert(eventType string, acct *model.AIBillingAccou
 		"status":         acct.Status,
 		"occurredAt":     time.Now().Format(time.RFC3339),
 	})
-	url := bm.sysCfg.AlertWebhook
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

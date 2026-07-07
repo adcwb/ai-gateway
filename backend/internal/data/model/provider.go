@@ -35,6 +35,13 @@ type AIProvider struct {
 	//   anthropic:    {"anthropicVersion": "2023-06-01"}
 	//   azure_openai: {"apiVersion": "2024-06-01"}
 	AdapterConfig datatypes.JSON `gorm:"column:adapter_config;type:json" json:"adapterConfig"`
+
+	// BreakerConfig carries per-provider circuit-breaker overrides
+	// (docs/design/01-routing-and-lb.md). Currently only the active health
+	// probe toggle/interval are read from it; failure threshold/cooldown/probe
+	// quota remain global constants in router.go.
+	//   {"activeProbeEnabled": true, "activeProbeIntervalSec": 30}
+	BreakerConfig datatypes.JSON `gorm:"column:breaker_config;type:json" json:"breakerConfig"`
 }
 
 // Provider dialect identifiers handled by the protocol adapter layer.

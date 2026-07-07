@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/opscenter/ai-gateway/internal/biz"
+	"github.com/opscenter/ai-gateway/internal/observability"
 )
 
 // VirtualKeyAuth is an HTTP middleware that authenticates requests via Bearer sk-vk-* token.
@@ -26,10 +27,13 @@ func NewVirtualKeyAuth(gateway *biz.GatewayUseCase, quota *biz.QuotaManager) *Vi
 // ProxyMiddleware returns an HTTP handler middleware for the proxy routes.
 func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// aigw.auth spans only key resolve + quota gate (docs/design/05-observability.md
+		// span topology) — it must end before next.ServeHTTP, not wrap the whole request.
+		ctx, authSpan := observability.Tracer.Start(r.Context(), "aigw.auth")
 
 		token := extractBearerToken(r)
 		if token == "" || !strings.HasPrefix(token, "sk-vk-") {
+			authSpan.End()
 			writeJSONError(w, http.StatusUnauthorized, "missing or invalid Authorization header")
 			return
 		}
@@ -39,16 +43,19 @@ func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 
 		key, err := m.gateway.ResolveKeyByHash(ctx, hash)
 		if err != nil {
+			authSpan.End()
 			writeJSONError(w, http.StatusUnauthorized, "invalid API key")
 			return
 		}
 
 		if !key.IsEnabled {
+			authSpan.End()
 			writeJSONError(w, http.StatusForbidden, "key disabled")
 			m.gateway.WriteRejectionAuditLog(ctx, key, http.StatusForbidden, "key disabled", biz.ClientIPFromRequest(r), "openai")
 			return
 		}
 		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
+			authSpan.End()
 			writeJSONError(w, http.StatusForbidden, "key expired")
 			m.gateway.WriteRejectionAuditLog(ctx, key, http.StatusForbidden, "key expired", biz.ClientIPFromRequest(r), "openai")
 			return
@@ -56,6 +63,7 @@ func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 
 		clientIP := biz.ClientIPFromRequest(r)
 		if !biz.IsClientIPAllowed(key, clientIP) {
+			authSpan.End()
 			writeJSONError(w, http.StatusForbidden, "IP not in whitelist")
 			m.gateway.WriteRejectionAuditLog(ctx, key, http.StatusForbidden, "IP not in whitelist: "+clientIP, clientIP, "openai")
 			return
@@ -63,11 +71,13 @@ func (m *VirtualKeyAuth) ProxyMiddleware(next http.Handler) http.Handler {
 
 		reqID, quotaErr := m.quota.CheckAndReserve(ctx, key)
 		if quotaErr != nil {
+			authSpan.End()
 			writeJSONError(w, http.StatusTooManyRequests, quotaErr.Error())
 			m.gateway.WriteRejectionAuditLog(ctx, key, http.StatusTooManyRequests, quotaErr.Error(), clientIP, "openai")
 			return
 		}
 		defer m.quota.ReleaseSlot(context.Background(), key.ID, reqID)
+		authSpan.End()
 
 		ctx = biz.WithVirtualKey(ctx, key)
 		next.ServeHTTP(w, r.WithContext(ctx))

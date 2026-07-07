@@ -45,16 +45,24 @@ func (uc *GatewayUseCase) CreateProvider(ctx context.Context, req *dto.CreatePro
 	if weight <= 0 {
 		weight = 100
 	}
+	breakerCfgJSON, err := json.Marshal(breakerConfig{
+		ActiveProbeEnabled:     req.ActiveProbeEnabled,
+		ActiveProbeIntervalSec: req.ActiveProbeIntervalSec,
+	})
+	if err != nil {
+		return nil, ErrProviderInvalid.WithMetadata(map[string]string{"field": "activeProbe"})
+	}
 	p := &model.AIProvider{
-		Name:         strings.TrimSpace(req.Name),
-		BaseURL:      strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"),
-		ProviderType: providerType,
-		APIKey:       encKey,
-		Models:       datatypes.JSON(modelsJSON),
-		IsEnabled:    true,
-		Weight:       weight,
-		Priority:     req.Priority,
-		Description:  req.Description,
+		Name:          strings.TrimSpace(req.Name),
+		BaseURL:       strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"),
+		ProviderType:  providerType,
+		APIKey:        encKey,
+		Models:        datatypes.JSON(modelsJSON),
+		IsEnabled:     true,
+		Weight:        weight,
+		Priority:      req.Priority,
+		Description:   req.Description,
+		BreakerConfig: datatypes.JSON(breakerCfgJSON),
 	}
 	if err := uc.db.WithContext(ctx).Create(p).Error; err != nil {
 		return nil, ErrProviderNameExists
@@ -115,6 +123,20 @@ func (uc *GatewayUseCase) UpdateProvider(ctx context.Context, req *dto.UpdatePro
 	}
 	if req.IsEnabled != nil {
 		updates["is_enabled"] = *req.IsEnabled
+	}
+	if req.ActiveProbeEnabled != nil || req.ActiveProbeIntervalSec != nil {
+		cfg := parseBreakerConfig(&p)
+		if req.ActiveProbeEnabled != nil {
+			cfg.ActiveProbeEnabled = *req.ActiveProbeEnabled
+		}
+		if req.ActiveProbeIntervalSec != nil {
+			cfg.ActiveProbeIntervalSec = *req.ActiveProbeIntervalSec
+		}
+		cfgJSON, err := json.Marshal(cfg)
+		if err != nil {
+			return nil, ErrProviderInvalid.WithMetadata(map[string]string{"field": "activeProbe"})
+		}
+		updates["breaker_config"] = datatypes.JSON(cfgJSON)
 	}
 	if len(updates) == 0 {
 		return &p, nil
@@ -211,12 +233,13 @@ func (uc *GatewayUseCase) ProviderHealth(ctx context.Context) ([]dto.ProviderHea
 			state = uc.router.StateOf(ctx, p.ID)
 		}
 		items = append(items, dto.ProviderHealthItem{
-			ProviderID: p.ID,
-			Name:       p.Name,
-			State:      state,
-			IsEnabled:  p.IsEnabled,
-			Weight:     p.Weight,
-			Priority:   p.Priority,
+			ProviderID:         p.ID,
+			Name:               p.Name,
+			State:              state,
+			IsEnabled:          p.IsEnabled,
+			Weight:             p.Weight,
+			Priority:           p.Priority,
+			ActiveProbeEnabled: parseBreakerConfig(&p).ActiveProbeEnabled,
 		})
 	}
 	return items, nil

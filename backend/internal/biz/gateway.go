@@ -20,6 +20,9 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -647,22 +650,26 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	//  - 命中映射：映射是指令而非提示——仅当映射显式配置了降级链时才转移；
 	//  - 未命中映射：按 Key 的路由策略在提供同模型的提供方之间排序。
 	ctx, _ = withAttemptTrail(ctx)
+	routeCtx, routeSpan := observability.Tracer.Start(ctx, "aigw.route")
 	var candidates []RouteCandidate
 	if mappingActive || uc.router == nil {
 		candidates = []RouteCandidate{{ProviderID: providerID, Model: realModelName}}
 		if mappingActive && uc.router != nil {
-			candidates = append(candidates, uc.mappingFallbackCandidates(ctx, key.ID, key.ProviderID, requestedModel)...)
+			candidates = append(candidates, uc.mappingFallbackCandidates(routeCtx, key.ID, key.ProviderID, requestedModel)...)
 		}
 	} else {
 		strategy := key.RoutingStrategy
 		if strategy == "" {
 			strategy = StrategyWeighted
 		}
-		candidates = uc.router.Candidates(ctx, realModelName, providerID, strategy)
+		candidates = uc.router.Candidates(routeCtx, realModelName, providerID, strategy)
+		routeSpan.SetAttributes(attribute.String("routing.strategy", strategy))
 	}
 	if len(candidates) > maxUpstreamAttempts {
 		candidates = candidates[:maxUpstreamAttempts]
 	}
+	routeSpan.SetAttributes(attribute.Int("routing.candidates", len(candidates)))
+	routeSpan.End()
 
 	var resp *http.Response
 	var selectedProvider *providerEntry
@@ -674,9 +681,18 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	for i, cand := range candidates {
 		attemptUsed = i
 		attemptStart := time.Now()
+		_, attemptSpan := observability.Tracer.Start(ctx, "aigw.upstream",
+			trace.WithSpanKind(trace.SpanKindClient),
+			trace.WithAttributes(
+				attribute.Int64("upstream.provider_id", int64(cand.ProviderID)),
+				attribute.String("gen_ai.request.model", cand.Model),
+			))
+
 		if uc.router != nil && !uc.router.TryPass(ctx, cand.ProviderID) {
 			lastErrMsg = fmt.Sprintf("provider %d circuit open", cand.ProviderID)
 			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "circuit_open"})
+			attemptSpan.SetStatus(codes.Error, "circuit_open")
+			attemptSpan.End()
 			continue
 		}
 		entry, perr := uc.loadProviderDirect(ctx, cand.ProviderID)
@@ -684,8 +700,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			uc.logger.Errorf("AI 网关加载提供方失败 providerID=%d err=%v", cand.ProviderID, perr)
 			lastErrMsg = perr.Error()
 			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "provider_load_failed"})
+			attemptSpan.SetStatus(codes.Error, "provider_load_failed")
+			attemptSpan.End()
 			continue
 		}
+		attemptSpan.SetAttributes(attribute.String("gen_ai.system", entry.provider.ProviderType))
 
 		// 降级链候选可指定不同的真实模型
 		attemptBody := sendBody
@@ -703,6 +722,8 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			uc.logger.Errorf("AI 网关构建上游请求失败 provider=%s err=%v", entry.provider.Name, err)
 			lastErrMsg = err.Error()
 			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: "build_request_failed"})
+			attemptSpan.SetStatus(codes.Error, "build_request_failed")
+			attemptSpan.End()
 			continue
 		}
 
@@ -715,6 +736,8 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			uc.logger.Errorf("AI 网关代理请求失败 provider=%s attempt=%d err=%v", entry.provider.Name, i+1, reqErr)
 			lastErrMsg = reqErr.Error()
 			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Err: trimErr(reqErr.Error()), LatencyMs: time.Since(attemptStart).Milliseconds()})
+			attemptSpan.SetStatus(codes.Error, trimErr(reqErr.Error()))
+			attemptSpan.End()
 			continue
 		}
 
@@ -732,6 +755,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			lastStatus = attemptResp.StatusCode
 			lastErrMsg = snippet
 			recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Status: attemptResp.StatusCode, Err: trimErr(snippet), LatencyMs: time.Since(attemptStart).Milliseconds()})
+			attemptSpan.SetAttributes(attribute.Int("http.status_code", attemptResp.StatusCode))
+			attemptSpan.SetStatus(codes.Error, "retryable_status")
+			attemptSpan.End()
 			continue
 		}
 
@@ -749,6 +775,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 		}
 		recordAttempt(ctx, AttemptRecord{ProviderID: cand.ProviderID, Status: attemptResp.StatusCode, LatencyMs: time.Since(attemptStart).Milliseconds()})
+		attemptSpan.SetAttributes(attribute.Int("http.status_code", attemptResp.StatusCode))
+		if attemptResp.StatusCode >= 400 {
+			attemptSpan.SetStatus(codes.Error, "")
+		}
+		attemptSpan.End()
 		resp = attemptResp
 		selectedProvider = entry
 		if cand.Model != "" {
@@ -867,10 +898,14 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	}
 
 	latency := time.Since(startTime).Milliseconds()
-	uc.quota.CommitTokens(ctx, key, realModelName, promptTokens, completionTokens)
-	openaiCredits, openaiPrice := uc.quota.CommitCredits(ctx, key, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+	settleCtx, settleSpan := observability.Tracer.Start(ctx, "aigw.settle", trace.WithAttributes(
+		attribute.Int("gen_ai.usage.input_tokens", promptTokens),
+		attribute.Int("gen_ai.usage.output_tokens", completionTokens),
+		attribute.Int("gen_ai.usage.cache_read_tokens", cachedTokens),
+	))
+	uc.quota.CommitTokens(settleCtx, key, realModelName, promptTokens, completionTokens)
+	openaiCredits, openaiPrice := uc.quota.CommitCredits(settleCtx, key, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
 	openaiUpstreamID := resp.Header.Get("x-request-id")
-	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, 0, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), "openai", openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
 
 	// 计费结算 + 用量日聚合（P1-3/P1-5）
 	if uc.billing != nil {
@@ -878,15 +913,18 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		currency := "CNY"
 		if freeze != nil && freeze.Account != nil {
 			currency = freeze.Account.Currency
-			priceMicro = uc.billing.PriceMicro(ctx, freeze.Account, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
-			uc.billing.Settle(ctx, freeze, requestID, priceMicro, openaiUpstreamID, "model="+realModelName)
+			priceMicro = uc.billing.PriceMicro(settleCtx, freeze.Account, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+			uc.billing.Settle(settleCtx, freeze, requestID, priceMicro, openaiUpstreamID, "model="+realModelName)
 		}
-		costMicro := uc.billing.CostMicro(ctx, currency, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
+		costMicro := uc.billing.CostMicro(settleCtx, currency, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens)
 		if priceMicro == 0 {
 			priceMicro = costMicro // no sell-side account: report price at cost
 		}
 		uc.billing.RecordUsage(tenantID, key.ID, selectedProvider.provider.ID, realModelName, promptTokens, completionTokens, cachedTokens, costMicro, priceMicro, false)
 	}
+	settleSpan.End()
+
+	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, 0, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), "openai", openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
 
 	// 精确缓存写入（仅缓存非流式成功响应；流式响应不重构存储）
 	if cacheEnabled && cacheDigest != "" && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
@@ -1033,6 +1071,8 @@ func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtua
 		ProjectID:           key.ProjectID,
 		ProjectName:         key.ProjectName,
 		EnvID:               key.EnvID,
+		TraceID:             observability.TraceIDFromContext(ctx),
+		SpanID:              observability.SpanIDFromContext(ctx),
 	}
 
 	entry.SessionID = resolveGatewaySessionID(ctx, uc.rdb, key, reqBody, clientIP)
@@ -1273,7 +1313,7 @@ func (uc *GatewayUseCase) ListAuditLogs(ctx context.Context, req dto.ListAuditLo
 		req.AuditLogFilter,
 	)
 	if req.SessionID != "" {
-		db = db.Where("COALESCE(NULLIF(session_id,''), CONCAT('log-', id)) = ?", req.SessionID)
+		db = db.Where(auditSessionExpr(uc.db)+" = ?", req.SessionID)
 	}
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
@@ -1292,6 +1332,13 @@ func (uc *GatewayUseCase) ListAuditLogs(ctx context.Context, req dto.ListAuditLo
 }
 
 // ListAuditSessions 审计日志按会话聚合分页查询
+//
+// Known caveat found via live testing: on the SQLite demo driver, MIN()/MAX()
+// over a datetime column loses column type affinity, so glebarez/sqlite
+// returns a raw string the Go time.Time Scan can't accept — this endpoint
+// 500s on sqlite specifically. MySQL/Postgres (the supported production
+// drivers) are unaffected. Not fixed here: a real fix needs a custom
+// sql.Scanner time type project-wide, disproportionate to a demo-only path.
 func (uc *GatewayUseCase) ListAuditSessions(ctx context.Context, req dto.ListAuditSessionsReq) ([]dto.AuditSessionSummary, int64, error) {
 	filtered := func() *gorm.DB {
 		return uc.applyAuditLogFilters(
@@ -1300,12 +1347,14 @@ func (uc *GatewayUseCase) ListAuditSessions(ctx context.Context, req dto.ListAud
 		)
 	}
 
+	sessExpr := auditSessionExpr(uc.db)
+
 	var total int64
-	if err := filtered().Select("COUNT(DISTINCT " + auditSessionExpr + ")").Scan(&total).Error; err != nil {
+	if err := filtered().Select("COUNT(DISTINCT " + sessExpr + ")").Scan(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	selectAgg := auditSessionExpr + " AS session_id, " +
+	selectAgg := sessExpr + " AS session_id, " +
 		"MIN(created_at) AS first_at, MAX(created_at) AS last_at, COUNT(*) AS req_count, " +
 		"SUM(prompt_tokens) AS prompt_tokens, SUM(completion_tokens) AS completion_tokens, SUM(total_tokens) AS total_tokens, " +
 		"SUM(points_consumed) AS points_consumed, SUM(price_consumed) AS price_consumed, " +
@@ -1315,7 +1364,7 @@ func (uc *GatewayUseCase) ListAuditSessions(ctx context.Context, req dto.ListAud
 	var sessions []dto.AuditSessionSummary
 	if err := filtered().
 		Select(selectAgg).
-		Group(auditSessionExpr).
+		Group(sessExpr).
 		Order("last_at DESC").
 		Limit(req.Limit()).Offset(req.Offset()).
 		Scan(&sessions).Error; err != nil {
@@ -1329,8 +1378,8 @@ func (uc *GatewayUseCase) ListAuditSessions(ctx context.Context, req dto.ListAud
 	for _, se := range sessions {
 		keys = append(keys, se.SessionID)
 	}
-	sub := filtered().Select(auditSessionExpr + " AS session_id, status_code, " +
-		"ROW_NUMBER() OVER (PARTITION BY " + auditSessionExpr + " ORDER BY created_at DESC, id DESC) AS rn")
+	sub := filtered().Select(sessExpr + " AS session_id, status_code, " +
+		"ROW_NUMBER() OVER (PARTITION BY " + sessExpr + " ORDER BY created_at DESC, id DESC) AS rn")
 	type sessFinalStatus struct {
 		SessionID  string
 		StatusCode int
@@ -1429,7 +1478,16 @@ func (uc *GatewayUseCase) SecurityOverview(ctx context.Context, req dto.Security
 	return resp, nil
 }
 
-const auditSessionExpr = "COALESCE(NULLIF(session_id,''), CONCAT('log-', id))"
+// auditSessionExpr builds the fallback-session-id SQL expression portably:
+// CONCAT() is MySQL/Postgres syntax, SQLite only has the `||` operator.
+// (Found via live testing against the sqlite demo driver — docs/design's
+// "Multi-DB" claim otherwise broke the whole Sessions tab on that driver.)
+func auditSessionExpr(db *gorm.DB) string {
+	if db != nil && db.Dialector != nil && db.Dialector.Name() == "sqlite" {
+		return "COALESCE(NULLIF(session_id,''), ('log-' || id))"
+	}
+	return "COALESCE(NULLIF(session_id,''), CONCAT('log-', id))"
+}
 
 func (uc *GatewayUseCase) applyAuditLogFilters(db *gorm.DB, f dto.AuditLogFilter) *gorm.DB {
 	if f.VirtualKeyID > 0 {
@@ -1782,6 +1840,7 @@ func allowedModelList(key *model.AIVirtualKey) []string {
 func (uc *GatewayUseCase) StartBackgroundWorkers(ctx context.Context) {
 	go StartKeyCacheInvalidator(ctx, uc.rdb, uc.rawLog)
 	go StartQuotaReleaseSweeper(ctx, uc.db, uc.rdb, uc.rawLog)
+	go uc.StartActiveHealthProbes(ctx)
 	uc.EnsureTenancyDefaults(ctx)
 	if uc.billing != nil {
 		uc.billing.Start(ctx)

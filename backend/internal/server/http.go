@@ -97,6 +97,29 @@ func NewHTTPServer(
 	mgmt.HandleFunc("GET /ai/gateway/stats/overview", gwSvc.UsageOverview)
 	mgmt.HandleFunc("GET /ai/gateway/stats/timeseries", gwSvc.UsageTimeseries)
 
+	// P2: model catalog + price tables (docs/design/03,08 module 4)
+	mgmt.HandleFunc("POST /ai/gateway/model-items", gwSvc.CreateModelItem)
+	mgmt.HandleFunc("GET /ai/gateway/model-items", gwSvc.ListModelItems)
+	mgmt.HandleFunc("PUT /ai/gateway/model-items", gwSvc.UpdateModelItem)
+	mgmt.HandleFunc("DELETE /ai/gateway/model-items", gwSvc.DeleteModelItem)
+	mgmt.HandleFunc("POST /ai/gateway/price-tables", gwSvc.CreatePriceTable)
+	mgmt.HandleFunc("GET /ai/gateway/price-tables", gwSvc.ListPriceTables)
+	mgmt.HandleFunc("PUT /ai/gateway/price-tables", gwSvc.UpdatePriceTable)
+	mgmt.HandleFunc("DELETE /ai/gateway/price-tables", gwSvc.DeletePriceTable)
+	mgmt.HandleFunc("POST /ai/gateway/price-tables/items", gwSvc.CreatePriceTableItem)
+	mgmt.HandleFunc("PUT /ai/gateway/price-tables/items", gwSvc.UpdatePriceTableItem)
+	mgmt.HandleFunc("DELETE /ai/gateway/price-tables/items", gwSvc.DeletePriceTableItem)
+	mgmt.HandleFunc("POST /ai/gateway/price-tables/test-pattern", gwSvc.TestPricePattern)
+
+	// P2: settings + credits rates (docs/design/08-web-console.md module 8)
+	mgmt.HandleFunc("GET /ai/gateway/settings", gwSvc.GetSettings)
+	mgmt.HandleFunc("PUT /ai/gateway/settings", gwSvc.UpdateSettings)
+	mgmt.HandleFunc("POST /ai/gateway/settings/test-webhook", gwSvc.TestAlertWebhook)
+	mgmt.HandleFunc("POST /ai/gateway/credits-rates", gwSvc.CreateCreditsRate)
+	mgmt.HandleFunc("GET /ai/gateway/credits-rates", gwSvc.ListCreditsRates)
+	mgmt.HandleFunc("PUT /ai/gateway/credits-rates", gwSvc.UpdateCreditsRate)
+	mgmt.HandleFunc("DELETE /ai/gateway/credits-rates", gwSvc.DeleteCreditsRate)
+
 	mux.Handle("/ai/gateway/", admin.Middleware(mgmt))
 
 	// -------------------------------------------------------------------------
@@ -110,9 +133,11 @@ func NewHTTPServer(
 	// Proxy routes — authenticated via sk-vk-* Bearer token
 	// -------------------------------------------------------------------------
 
+	tracing := middleware.NewTracing(sys)
+
 	// /ai/v1/models must be registered before /ai/v1/ catch-all
-	mux.Handle("/ai/v1/models", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ListModels)))
-	mux.Handle("/ai/v1/", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest)))
+	mux.Handle("/ai/v1/models", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ListModels))))
+	mux.Handle("/ai/v1/", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest))))
 
 	addr := ":8080"
 	if c != nil && c.HTTP != nil && c.HTTP.Addr != "" {

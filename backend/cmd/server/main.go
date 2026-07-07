@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -9,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/opscenter/ai-gateway/internal/conf"
+	"github.com/opscenter/ai-gateway/internal/observability"
 	"github.com/opscenter/ai-gateway/internal/server"
 )
 
@@ -41,6 +43,12 @@ func main() {
 	if bc.System == nil || len(bc.System.EncryptionKey) != 32 {
 		helper.Warn("system.encryption_key 不是 32 字节：AES-256 将使用零填充/截断后的密钥，生产环境请设置精确 32 字节密钥")
 	}
+
+	shutdownTracing, err := observability.SetupTracing(context.Background(), bc.Observability, logger)
+	if err != nil {
+		helper.Fatalf("init tracing: %v", err)
+	}
+	defer shutdownTracing(context.Background())
 
 	app, cleanup, err := wireApp(&bc, logger)
 	if err != nil {

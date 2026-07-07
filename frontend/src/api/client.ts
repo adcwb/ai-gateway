@@ -183,6 +183,13 @@ export interface ProviderHealth {
   priority: number;
 }
 
+export interface AttemptRecord {
+  providerId: number;
+  status: number;
+  err?: string;
+  latencyMs: number;
+}
+
 export interface AuditLog {
   id: number;
   createdAt: string;
@@ -190,13 +197,57 @@ export interface AuditLog {
   keyName?: string;
   providerId?: number;
   model?: string;
+  requestedModel?: string;
   promptTokens?: number;
   completionTokens?: number;
+  cacheReadTokens?: number;
   latencyMs?: number;
   statusCode?: number;
+  errorMessage?: string;
   errMsg?: string;
   clientIp?: string;
+  clientAgent?: string;
+  protocol?: string;
+  sessionId?: string;
+  traceId?: string;
+  spanId?: string;
+  attemptsTotal?: number;
+  providerAttempts?: AttemptRecord[] | string;
+  piiBlocked?: boolean;
+  piiAction?: string;
+  piiTypes?: string;
+  requestBody?: string;
+  responseBody?: string;
+  pointsConsumed?: number;
+  priceConsumed?: number;
   [k: string]: unknown;
+}
+
+export interface AuditSessionSummary {
+  sessionId: string;
+  firstAt: string;
+  lastAt: string;
+  reqCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  pointsConsumed: number;
+  priceConsumed: number;
+  finalStatusCode: number;
+  keyName: string;
+  clientAgent: string;
+  protocol: string;
+  model: string;
+}
+
+export interface SecurityOverview {
+  totalRequests: number;
+  blockCount: number;
+  redactCount: number;
+  errorCount: number;
+  errorRate: number;
+  topPiiTypes: { type: string; count: number }[];
+  topErrorModels: { model: string; error_count: number }[];
 }
 
 export interface PageResp<T> {
@@ -275,4 +326,54 @@ export interface UsagePoint {
   completionTokens: number;
   costCredits: number;
   priceCredits: number;
+}
+
+export interface ModelItem {
+  id: number;
+  providerId: number;
+  name: string;
+  modelType: string;
+  contextWindow: number;
+  isDefault: boolean;
+  isEnabled: boolean;
+  source: string;
+  description: string;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  cacheReadPricePerMillion: number;
+  cacheWritePricePerMillion: number;
+}
+
+export interface PriceTableItem {
+  id: number;
+  priceTableId: number;
+  modelPattern: string;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  cacheReadPerMillion: number;
+}
+
+export interface PriceTable {
+  id: number;
+  name: string;
+  currency: string;
+  items?: PriceTableItem[];
+}
+
+export interface PatternTestResp {
+  matched: string[];
+  isRegex: boolean;
+}
+
+export interface Settings {
+  alertWebhook: string;
+  alertWebhookIsOverride: boolean;
+}
+
+export interface CreditsRate {
+  id: number;
+  currency: string;
+  ratePerCredit: number;
+  isEnabled: boolean;
+  description: string;
 }

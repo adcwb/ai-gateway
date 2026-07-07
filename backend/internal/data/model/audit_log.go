@@ -58,6 +58,11 @@ type AIGatewayAuditLog struct {
 	ProjectID         *string `gorm:"column:project_id;type:varchar(64);index" json:"projectId"`
 	ProjectName       *string `gorm:"column:project_name;type:varchar(128)" json:"projectName"`
 	EnvID             *string `gorm:"column:env_id;type:varchar(64);index" json:"envId"`
+
+	// TraceID/SpanID correlate this row with an OTel trace (docs/design/05-observability.md).
+	// Empty when tracing is disabled or the request's span was not sampled.
+	TraceID string `gorm:"column:trace_id;type:varchar(32);index" json:"traceId"`
+	SpanID  string `gorm:"column:span_id;type:varchar(16)" json:"spanId"`
 }
 
 func (AIGatewayAuditLog) TableName() string { return "ai_gateway_audit_logs" }

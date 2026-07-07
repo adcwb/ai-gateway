@@ -7,19 +7,24 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Keys from "./pages/Keys";
 import Providers from "./pages/Providers";
+import ModelsPricing from "./pages/ModelsPricing";
 import Audit from "./pages/Audit";
 import Tenants from "./pages/Tenants";
 import Billing from "./pages/Billing";
+import Settings from "./pages/Settings";
 
 interface NavItem { to: string; key: string; icon: IconName; end?: boolean }
 
 // Grouped so the eye lands on operate → manage → observe.
+// slice bounds below assume: [0,3) operate, [3,7) manage, [7,) observe.
 const NAV: NavItem[] = [
   { to: "/", key: "dashboard", icon: "dashboard", end: true },
   { to: "/keys", key: "keys", icon: "key" },
   { to: "/providers", key: "providers", icon: "providers" },
+  { to: "/models-pricing", key: "modelsPricing", icon: "pricetag" },
   { to: "/tenants", key: "tenants", icon: "tenants" },
   { to: "/billing", key: "billing", icon: "billing" },
+  { to: "/settings", key: "settings", icon: "settings" },
   { to: "/audit", key: "audit", icon: "audit" },
 ];
 
@@ -62,13 +67,13 @@ export default function App() {
           </NavLink>
         ))}
         <div className="nav-eyebrow">{t("navManage", lang)}</div>
-        {NAV.slice(3, 5).map((n) => (
+        {NAV.slice(3, 7).map((n) => (
           <NavLink key={n.to} to={n.to}>
             <Icon name={n.icon} size={16} /> {t(n.key, lang)}
           </NavLink>
         ))}
         <div className="nav-eyebrow">{t("navObserve", lang)}</div>
-        {NAV.slice(5).map((n) => (
+        {NAV.slice(7).map((n) => (
           <NavLink key={n.to} to={n.to}>
             <Icon name={n.icon} size={16} /> {t(n.key, lang)}
           </NavLink>
@@ -91,9 +96,11 @@ export default function App() {
           <Route path="/" element={<Dashboard lang={lang} />} />
           <Route path="/keys" element={<Keys lang={lang} />} />
           <Route path="/providers" element={<Providers lang={lang} />} />
+          <Route path="/models-pricing" element={<ModelsPricing lang={lang} />} />
           <Route path="/audit" element={<Audit lang={lang} />} />
           <Route path="/tenants" element={<Tenants lang={lang} />} />
           <Route path="/billing" element={<Billing lang={lang} />} />
+          <Route path="/settings" element={<Settings lang={lang} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

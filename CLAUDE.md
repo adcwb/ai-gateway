@@ -47,8 +47,8 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Capability | Status | Notes / where |
 | --- | --- | --- |
 | Virtual keys, quotas, audit, model mapping, sticky sessions, IP whitelist | ✅ | P0 inherited core |
-| Weighted LB + failover + circuit breaker + strategies | ✅ | `biz/router.go`: weighted / priority / least_latency (Redis EWMA) / least_cost per key; per-mapping `fallback_chain`; per-attempt audit trail. Active health probes 🔴 (D01) |
-| Metrics `/metrics`, `/healthz`, `/readyz`, Grafana dashboard | ✅ | OTel tracing 🔴 (D05) |
+| Weighted LB + failover + circuit breaker + strategies + active health probes | ✅ | `biz/router.go`: weighted / priority / least_latency (Redis EWMA) / least_cost per key; per-mapping `fallback_chain`; per-attempt audit trail. `biz/health_probe.go`: opt-in per-provider active probing for idle-period breaker recovery (D01) |
+| Metrics `/metrics`, `/healthz`, `/readyz`, Grafana dashboard, OTel tracing | ✅ | tracing opt-in via `observability.otlp_endpoint` (empty = disabled, zero overhead); span topology + force-sample header per D05 |
 | Admin-token management auth | ✅ | User system intentionally skipped — SSO/OIDC to be introduced directly (D04) |
 | Tenants → projects → keys, default-tenant bootstrap | ✅ | project `quota_template` inheritance ✅; tenant-scoped list filtering 🔴 (admin token = platform admin) |
 | Balance billing: accounts, ledger, freeze→settle, grace/suspension, budget alerts | ✅ | alert webhook ✅ (`AIGW_ALERT_WEBHOOK`); email channel, payment gateways / subscriptions / invoices 🔴 (D03 L4) |
@@ -57,7 +57,7 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Rule-based PII engine (block/redact/log) + injection heuristic | ✅ | pluggable checker chain, external engine (gRPC), outbound/stream scanning, audit-body encryption 🔴 (D06) |
 | Protocol adapters | 🟡 | outbound anthropic + gemini (incl. SSE) + azure_openai ✅; Bedrock, inbound Anthropic Messages & Responses API 🔴 (D02) |
 | Exact response cache + hit billing | ✅ | semantic cache 🔴 (D07); streaming responses are not cached (by design, revisit) |
-| Web console | 🟡 | key create/manage + provider forms + usage charts ✅; price-table page, audit body/session views, settings, Playwright E2E 🔴 (D08) |
+| Web console | ✅ | key/provider/model-pricing management, usage charts, audit body/session/security views, settings, Playwright E2E ✅ (D08); RBAC/SSO, fallback-chain drag editor, guardrail-chain builder remain out of scope (no user system) |
 | Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
 | Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
 | Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |
@@ -72,3 +72,4 @@ When picking up new work, prefer closing a 🟡 row before starting a 🔴 one, 
 - GORM `default:` tags override zero-value fields on `Create` (weight 0, grace_hours 0…) — seed explicitly.
 - `backend/internal/console/dist/` holds only a placeholder `index.html` in git; never commit real console assets there.
 - Chinese comments/log messages are project convention; key terms: 虚拟 Key = virtual key, 提供方 = provider, 配额 = quota, 审计 = audit, 熔断 = circuit breaker, 结算 = settlement.
+- SQL portability across mysql/postgres/sqlite: `CONCAT()` is not valid SQLite syntax (use a dialect check, see `auditSessionExpr` in `biz/gateway.go`); `MIN()`/`MAX()` over a datetime column loses type affinity on SQLite specifically, breaking a `time.Time` `Scan` (known caveat on `ListAuditSessions`, not fixed — SQLite is demo-only).

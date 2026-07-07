@@ -12,10 +12,13 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/bulk"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/opscenter/ai-gateway/internal/observability"
 )
 
 const (
@@ -148,6 +151,31 @@ func (w *AuditWorker) auditBatchWorker(ctx context.Context) {
 }
 
 func (w *AuditWorker) processBatch(ctx context.Context, logs []model.AIGatewayAuditLog) {
+	// aigw.audit.persist is linked (not parented) to each member request's span
+	// (docs/design/05-observability.md): persistence happens async, well after
+	// the response returns, so a parent-child relationship would be misleading.
+	links := make([]trace.Link, 0, len(logs))
+	for _, l := range logs {
+		if l.TraceID == "" || l.SpanID == "" {
+			continue
+		}
+		tid, err1 := trace.TraceIDFromHex(l.TraceID)
+		sid, err2 := trace.SpanIDFromHex(l.SpanID)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		links = append(links, trace.Link{SpanContext: trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    tid,
+			SpanID:     sid,
+			TraceFlags: trace.FlagsSampled,
+			Remote:     true,
+		})})
+	}
+	ctx, persistSpan := observability.Tracer.Start(ctx, "aigw.audit.persist",
+		trace.WithLinks(links...),
+		trace.WithAttributes(attribute.Int("audit.batch_size", len(logs))))
+	defer persistSpan.End()
+
 	requestBodies := make([]string, len(logs))
 	responseBodies := make([]string, len(logs))
 	for i, l := range logs {

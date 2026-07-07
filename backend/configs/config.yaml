@@ -24,6 +24,12 @@ system:
   encryption_key: "change-this-to-a-32-byte-secret!"   # exactly 32 bytes (AES-256-GCM)
   admin_token: ""            # REQUIRED in production; empty = open management API (warning logged)
 
+observability:
+  otlp_endpoint: ""          # OTLP/gRPC collector address, e.g. "localhost:4317"; empty = tracing disabled
+  otlp_insecure: true         # skip TLS for the OTLP exporter (local collector sidecar)
+  trace_sample_ratio: 0.01    # parent-based ratio sampler; force-sampled via X-AIGW-Trace-Force + admin_token
+
 # Every key above can be overridden via environment variables:
 # AIGW_HTTP_ADDR, AIGW_METRICS_ADDR, AIGW_DB_DRIVER, AIGW_DB_DSN,
-# AIGW_REDIS_ADDR, AIGW_REDIS_PASSWORD, AIGW_ENCRYPTION_KEY, AIGW_ADMIN_TOKEN
+# AIGW_REDIS_ADDR, AIGW_REDIS_PASSWORD, AIGW_ENCRYPTION_KEY, AIGW_ADMIN_TOKEN,
+# AIGW_ALERT_WEBHOOK, AIGW_OTLP_ENDPOINT, AIGW_OTLP_INSECURE, AIGW_TRACE_SAMPLE_RATIO

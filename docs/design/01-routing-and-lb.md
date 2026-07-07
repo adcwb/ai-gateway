@@ -121,7 +121,9 @@ ai:gw:lat:{providerID}:{model} # hash: ewma_ms, ttft_ewma_ms, updated_at
 
 Defaults (per-provider overridable via new JSON column `breaker_config` on `AIProvider`): failure threshold 5 in 30 s, cooldown 30 s, half-open probe quota 3. Counted as failures: connect errors, timeouts, HTTP 5xx, 429. **Not** counted: 4xx other than 429 (those are caller errors), guardrail blocks, quota rejections.
 
-Passive checks are the P0 mechanism. Optional active probing (periodic `GET /models` against the provider) is a P1 add-on for idle-period recovery detection, off by default.
+Passive checks are the P0 mechanism. Active probing closes a specific gap in passive-only recovery: `Candidates()` pushes open-breaker providers to the end of the list, and the attempt loop stops at `maxUpstreamAttempts`, so a provider ranked behind enough healthy candidates can go indefinitely without another attempt — and therefore never re-enter half-open — even after its outage clears. A background sweep (`internal/biz/health_probe.go`, 10 s tick) calls the *same* `TryPass`/`ReportResult` pair a real attempt would, against a lightweight dialect-appropriate request (`GET /v1/models` for anthropic/gemini, `GET /models` for openai_compatible, a bare host-root `GET` for azure_openai/bedrock where no generic cheap endpoint exists), so the shared Lua breaker state machine cannot tell a probe apart from a real attempt — no breaker changes were needed. Any non-5xx response counts as recovery (proves the network/TLS/HTTP path is alive; a 4xx doesn't indict what the breaker guards against).
+
+Off by default, per provider, via `AIProvider.breaker_config` (`{"activeProbeEnabled": true, "activeProbeIntervalSec": 30}`, exposed on the provider create/update API). Only non-closed providers are probed — closed ones already get plenty of signal from live traffic. Failure threshold/cooldown/probe-quota tuning via `breaker_config` remains future work; today those stay the global constants in `router.go`.
 
 ## Retry & failover
 
@@ -174,7 +176,8 @@ All additive (per roadmap invariant 2):
 | `internal/biz/gateway.go` `resolveTargetModel` / `resolveExactTargetModel` | Return `[]RouteCandidate` instead of a single pair; delete both `mrand.IntN` sites |
 | `internal/biz/gateway.go` `ProxyRequest` | Attempt loop, retry budget, per-attempt audit fields, `ReportResult` calls |
 | `internal/biz/gateway.go` `resolveSticky` | Breaker-aware reordering as above |
-| `internal/biz/gateway.go` `loadProviderDirect` | Unchanged; called per attempt |
+| `internal/biz/gateway.go` `loadProviderDirect` | Unchanged; called per attempt (and per active probe) |
+| `internal/biz/health_probe.go` (new) | Active probe sweep loop, dialect-aware probe request builder, `breaker_config` parsing |
 | `cmd/server/wire.go` | Add `NewRouterManager` to `biz.ProviderSet`; regenerate `wire_gen.go` |
 
 ## Observability hooks

@@ -4,6 +4,10 @@ backend/server.exe
 backend/coverage.out
 frontend/dist/
 frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+.playwright-mcp/
 out/
 
 # embedded console: only the placeholder is tracked

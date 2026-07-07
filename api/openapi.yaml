@@ -302,6 +302,71 @@ paths:
         - { name: tenantId, in: query, schema: { type: integer } }
       responses: { "200": { description: rows } }
 
+  /ai/gateway/model-items:
+    post: { summary: "Register a model's upstream cost pricing under a provider", responses: { "200": { description: created } } }
+    get:
+      summary: List model items, optionally filtered by provider
+      parameters: [{ name: providerId, in: query, schema: { type: integer } }]
+      responses: { "200": { description: "data: ModelItem[]" } }
+    put: { summary: "Partial update of catalog/pricing fields", responses: { "200": { description: updated } } }
+    delete:
+      summary: Soft-delete a model item
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+  /ai/gateway/price-tables:
+    post: { summary: Create a named sell-side price table, responses: { "200": { description: created } } }
+    get:
+      summary: List price tables with their items populated
+      responses: { "200": { description: "data: PriceTable[]" } }
+    put: { summary: Partial update, responses: { "200": { description: updated } } }
+    delete:
+      summary: Soft-delete a price table
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+  /ai/gateway/price-tables/items:
+    post: { summary: Add a model-pattern price row to a table, responses: { "200": { description: created } } }
+    put: { summary: Partial update of a price table item, responses: { "200": { description: updated } } }
+    delete:
+      summary: Remove a price table item
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+  /ai/gateway/price-tables/test-pattern:
+    post:
+      summary: "Report which known model names an exact-or-regex pattern matches (same semantics as model mappings)"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pattern, models]
+              properties:
+                pattern: { type: string }
+                models: { type: array, items: { type: string } }
+      responses: { "200": { description: "data: { matched: string[], isRegex: boolean }" } }
+
+  /ai/gateway/settings:
+    get:
+      summary: Get console-editable settings (currently the alert webhook override)
+      responses: { "200": { description: "data: { alertWebhook, alertWebhookIsOverride }" } }
+    put: { summary: "Partial update; an empty alertWebhook clears the override", responses: { "200": { description: updated } } }
+  /ai/gateway/settings/test-webhook:
+    post:
+      summary: Send a synthetic test event to the resolved alert webhook
+      responses:
+        "200": { description: delivered }
+        "400": { description: SETTINGS_WEBHOOK_NOT_CONFIGURED }
+        "502": { description: SETTINGS_WEBHOOK_TEST_FAILED }
+  /ai/gateway/credits-rates:
+    post: { summary: Register a currency's CNY-equivalent credit rate, responses: { "200": { description: created } } }
+    get:
+      summary: List configured currency rates
+      responses: { "200": { description: "data: CreditsRate[]" } }
+    put: { summary: Partial update (invalidates the Redis-cached rate), responses: { "200": { description: updated } } }
+    delete:
+      summary: Remove a currency rate
+      parameters: [{ name: id, in: query, schema: { type: integer }, required: true }]
+      responses: { "200": { description: deleted } }
+
   /ai/gateway/audit/list:
     get:
       summary: Paginate audit logs with filters
