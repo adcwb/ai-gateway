@@ -69,4 +69,13 @@ var (
 
 	// Responses API server-side state (docs/design/02-protocol-adapters.md).
 	ErrResponseStateNotFound = kerrors.BadRequest("PREVIOUS_RESPONSE_NOT_FOUND", "previous_response_id not found or expired")
+
+	// Model mappings (docs/design/01-routing-and-lb.md).
+	ErrModelMappingNotFound = kerrors.NotFound("MODEL_MAPPING_NOT_FOUND", "model mapping not found")
+	ErrModelMappingInvalid  = kerrors.BadRequest("MODEL_MAPPING_INVALID", "virtualKeyId, virtualModel, and realModelId are required")
+	ErrModelMappingExists   = kerrors.BadRequest("MODEL_MAPPING_EXISTS", "this key already has a mapping for that virtual model name")
+
+	// PII/guardrail policies (docs/design/06-security-and-guardrails.md).
+	ErrPIIPolicyNotFound = kerrors.NotFound("PII_POLICY_NOT_FOUND", "policy not found")
+	ErrPIIPolicyInvalid  = kerrors.BadRequest("PII_POLICY_INVALID", "name and action are required")
 )

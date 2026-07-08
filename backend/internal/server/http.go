@@ -152,6 +152,22 @@ func NewHTTPServer(
 	mgmt.HandleFunc("PUT /ai/gateway/extensions", middleware.RequirePlatformAdmin(gwSvc.UpdateExtension))
 	mgmt.HandleFunc("DELETE /ai/gateway/extensions", middleware.RequirePlatformAdmin(gwSvc.DeleteExtension))
 
+	// Model mappings — per-key virtual model name -> real model + fallback
+	// chain (docs/design/01-routing-and-lb.md "console UI: fallback-chain
+	// drag editor"). Same posture as MCP servers/extensions.
+	mgmt.HandleFunc("POST /ai/gateway/model-mappings", middleware.RequirePlatformAdmin(gwSvc.CreateModelMapping))
+	mgmt.HandleFunc("GET /ai/gateway/model-mappings", gwSvc.ListModelMappings)
+	mgmt.HandleFunc("PUT /ai/gateway/model-mappings", middleware.RequirePlatformAdmin(gwSvc.UpdateModelMapping))
+	mgmt.HandleFunc("DELETE /ai/gateway/model-mappings", middleware.RequirePlatformAdmin(gwSvc.DeleteModelMapping))
+
+	// PII/guardrail policies — global, bindable per key
+	// (docs/design/06-security-and-guardrails.md "console UI: guardrail-chain
+	// builder"). Same posture as MCP servers/extensions.
+	mgmt.HandleFunc("POST /ai/gateway/pii-policies", middleware.RequirePlatformAdmin(gwSvc.CreatePIIPolicy))
+	mgmt.HandleFunc("GET /ai/gateway/pii-policies", gwSvc.ListPIIPolicies)
+	mgmt.HandleFunc("PUT /ai/gateway/pii-policies", middleware.RequirePlatformAdmin(gwSvc.UpdatePIIPolicy))
+	mgmt.HandleFunc("DELETE /ai/gateway/pii-policies", middleware.RequirePlatformAdmin(gwSvc.DeletePIIPolicy))
+
 	// P1/P2: users, RBAC, admin API keys (docs/design/04-multi-tenancy-and-auth.md)
 	mgmt.HandleFunc("GET /ai/gateway/auth/me", authSvc.Me)
 	mgmt.HandleFunc("GET /ai/gateway/users", authSvc.ListUsers)

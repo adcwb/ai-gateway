@@ -186,3 +186,7 @@ ai:gw:lat:{providerID}:{model} # hash: ewma_ms, ttft_ewma_ms, updated_at
 - 单元：策略排序（1 万次抽样的加权分布与配置权重偏差 ±5% 内）、熔断状态机迁移、可重试错误矩阵。
 - 集成（httptest 伪提供方）：负载中杀掉提供方 A → 流量在熔断窗口内切到 B；恢复 A → 半开探测后流量回归；流式首 chunk 后的失败**不**重试。
 - [路线图](../03-roadmap.md)中的 P0 出口标准（"杀掉两个提供方之一，除在途请求外零用户可见错误"）就是本文档的整体验收测试。
+
+## 实现笔记（ADR 附录）
+
+**模型映射管理 CRUD + 控制台故障转移链拖拽编辑器。**`AIModelMapping`（虚拟模型名 → 真实模型 + `fallback_chain` 这一行，路由器早就在热路径上通过 `resolveModelMapping`/`matchModelMapping` 解析它）此前除了直接写库之外没有任何创建/编辑手段。`internal/biz/model_mapping_admin.go` 在 `/ai/gateway/model-mappings` 上新增 Create/List（按 `virtual_key_id`，预加载 `RealModel`）/Update/Delete——沿用 MCP 服务器/扩展已有的管理 CRUD 写法（全局对象姿态：仅平台管理员可写；按 Key 归属租户做 RBAC 校验属于进一步增量，与本项目已记录的"广泛租户范围过滤"缺口保持一致）。控制台的 `ModelMappings.tsx` 页面把虚拟 Key 选择器、映射表格与创建/编辑表单组合在一起；故障转移链本身是一个 `@dnd-kit/core` + `@dnd-kit/sortable` 可拖拽排序的 `{providerId, model}` 行列表（新增行选择提供方并填入模型名；拖拽手柄调整顺序；逐行删除），直接序列化进已有的 `fallback_chain` JSON 列——没有新增列，没有新增解析逻辑，纯粹是把路由器早就会读的东西补上一个可编辑的入口。

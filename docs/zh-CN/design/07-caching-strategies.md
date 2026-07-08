@@ -93,3 +93,15 @@
 - 语义：在带标注的同义改写语料上做阈值扫描，记录精度/命中率权衡；默认阈值在语料上精度必须 ≥ 99%。
 - 故障：负载中停掉 Redis ⇒ 零请求失败、全部未命中。
 - P2 出口标准（[路线图](../03-roadmap.md)）：重复负载基准命中率 ≥ 30%，计费符合策略。
+
+## 实现笔记（ADR 附录）
+
+> 注：本文档英文版第一轮 ADR（`VectorIndex`、能力探测、每 scope 一个索引等落地细节）尚未回填到中文版；以下第二轮是本轮新增内容的完整翻译。
+
+### 第二轮：缓存配置 + 向量模型设置的控制台 UI
+
+补上第一轮 ADR 结尾提到的"控制台 UI 缺口"。
+
+- **`Keys.tsx` 的创建表单新增"响应缓存"字段组**：`exactEnabled`/`semanticEnabled` 复选框，`ttlSec`/`semanticThreshold`/`semanticTtlSec` 数字输入框，以及一个 `billingPolicy` 下拉框（`free`/`discount`/`full`，选择 `discount` 时联动出现 `discountPercent` 字段）——直接序列化进管理 API 早就接受的同一个 `cacheConfig` JSON 字段。没有新增接口；纯粹是给一个此前控制台完全没有 UI 的字段补上表单。
+- **`Settings.tsx` 新增"语义缓存向量模型"分区**——提供方下拉框（复用已经拉取好的 `Provider[]` 列表）、模型文本输入框、维度数字输入框——完全沿用告警 Webhook 字段已有的单对象 `GET`/`PUT /ai/gateway/settings` 模式。同样：没有后端改动，这些字段（`cacheEmbeddingProviderId`/`cacheEmbeddingModel`/`cacheEmbeddingDim`）早就在 `SettingsResp`/`UpdateSettingsReq` 里，只是从来没有暴露在表单里。
+- **按 Key 绑定 PII/防护策略**（`AIVirtualKey.PIIPolicyID`——和缓存本身无关，但因为需要同样的"给 Keys 表单加一个下拉框"的工作量，就在同一轮里一并完成了）：Keys 创建表单新增一个"防护策略"下拉框，数据源是新增的 `GET /ai/gateway/pii-policies` 接口（见 [D06 第三轮](06-security-and-guardrails.md)）。在此之前，一个 Key 只能用 `resolvePIIPolicy` 挑出来的默认策略——控制台（乃至此前的任何管理接口）都没有办法把某个特定的非默认策略绑定到某个特定的 Key 上。

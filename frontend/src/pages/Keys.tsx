@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import {
   api,
   useAsync,
+  type CacheConfig,
   type CreateKeyResp,
   type PageResp,
+  type PIIPolicy,
   type Provider,
   type Tenant,
   type VirtualKey,
@@ -25,9 +27,17 @@ export default function Keys({ lang }: { lang: Lang }) {
     routingStrategy: "",
     toolWhitelistCsv: "",
     hourlyToolCallQuota: 0,
+    piiPolicyId: 0,
+    exactEnabled: false,
+    semanticEnabled: false,
+    ttlSec: 3600,
+    semanticThreshold: 0.92,
+    semanticTtlSec: 3600,
+    billingPolicy: "free" as NonNullable<CacheConfig["billingPolicy"]>,
+    discountPercent: 50,
   });
 
-  const { data, loading, error, refresh } = useAsync<[VirtualKey[], Provider[], Tenant[]]>(
+  const { data, loading, error, refresh } = useAsync<[VirtualKey[], Provider[], Tenant[], PIIPolicy[]]>(
     (s) =>
       Promise.all([
         api
@@ -35,12 +45,14 @@ export default function Keys({ lang }: { lang: Lang }) {
           .then((r) => r.list ?? r.items ?? []),
         api.get<Provider[]>("/ai/gateway/providers", { signal: s }),
         api.get<Tenant[]>("/ai/gateway/tenants", { signal: s }),
+        api.get<PIIPolicy[]>("/ai/gateway/pii-policies", { signal: s }),
       ]),
     [],
   );
   const keys = data?.[0] ?? [];
   const providers = data?.[1] ?? [];
   const tenants = data?.[2] ?? [];
+  const piiPolicies = data?.[3] ?? [];
 
   // Seed the create-form's provider/tenant defaults once the lists arrive.
   useEffect(() => {
@@ -58,6 +70,15 @@ export default function Keys({ lang }: { lang: Lang }) {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    const cacheConfig: CacheConfig = {
+      exactEnabled: form.exactEnabled,
+      semanticEnabled: form.semanticEnabled,
+      ttlSec: form.ttlSec,
+      semanticThreshold: form.semanticThreshold,
+      semanticTtlSec: form.semanticTtlSec,
+      billingPolicy: form.billingPolicy,
+      discountPercent: form.billingPolicy === "discount" ? form.discountPercent : undefined,
+    };
     try {
       const resp = await api.post<CreateKeyResp>("/ai/gateway/key", {
         name: form.name.trim(),
@@ -67,6 +88,8 @@ export default function Keys({ lang }: { lang: Lang }) {
         routingStrategy: form.routingStrategy || undefined,
         toolWhitelist: toolWhitelist.length ? toolWhitelist : undefined,
         hourlyToolCallQuota: form.hourlyToolCallQuota || 0,
+        piiPolicyId: form.piiPolicyId || undefined,
+        cacheConfig,
       });
       setMinted(resp);
       setCopied(false);
@@ -214,6 +237,70 @@ export default function Keys({ lang }: { lang: Lang }) {
                 placeholder={t("toolWhitelistHint", lang)}
               />
             </label>
+            <label className="field">
+              <div className="field-label">{t("guardrailPolicy", lang)}</div>
+              <select value={form.piiPolicyId} onChange={(e) => setForm({ ...form, piiPolicyId: Number(e.target.value) })}>
+                <option value={0}>{t("useDefaultPolicy", lang)}</option>
+                {piiPolicies.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+
+            <div className="field span-3">
+              <div className="field-label">{t("cacheConfig", lang)}</div>
+              <div className="form-grid" style={{ marginTop: 4 }}>
+                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={form.exactEnabled} onChange={(e) => setForm({ ...form, exactEnabled: e.target.checked })} />
+                  <div className="field-label" style={{ margin: 0 }}>{t("exactCacheEnabled", lang)}</div>
+                </label>
+                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={form.semanticEnabled} onChange={(e) => setForm({ ...form, semanticEnabled: e.target.checked })} />
+                  <div className="field-label" style={{ margin: 0 }}>{t("semanticCacheEnabled", lang)}</div>
+                </label>
+                <label className="field">
+                  <div className="field-label">{t("cacheTtlSec", lang)}</div>
+                  <input type="number" min="0" value={form.ttlSec} onChange={(e) => setForm({ ...form, ttlSec: Number(e.target.value) || 0 })} />
+                </label>
+                <label className="field">
+                  <div className="field-label">{t("semanticThreshold", lang)}</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={form.semanticThreshold}
+                    onChange={(e) => setForm({ ...form, semanticThreshold: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label className="field">
+                  <div className="field-label">{t("semanticCacheTtlSec", lang)}</div>
+                  <input type="number" min="0" value={form.semanticTtlSec} onChange={(e) => setForm({ ...form, semanticTtlSec: Number(e.target.value) || 0 })} />
+                </label>
+                <label className="field">
+                  <div className="field-label">{t("cacheBillingPolicy", lang)}</div>
+                  <select
+                    value={form.billingPolicy}
+                    onChange={(e) => setForm({ ...form, billingPolicy: e.target.value as typeof form.billingPolicy })}
+                  >
+                    <option value="free">free</option>
+                    <option value="discount">discount</option>
+                    <option value="full">full</option>
+                  </select>
+                </label>
+                {form.billingPolicy === "discount" && (
+                  <label className="field">
+                    <div className="field-label">{t("cacheDiscountPercent", lang)}</div>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={form.discountPercent}
+                      onChange={(e) => setForm({ ...form, discountPercent: Number(e.target.value) || 0 })}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
             <div className="form-actions">
               <button type="submit"><Icon name="plus" size={14} /> {t("submit", lang)}</button>
               <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>

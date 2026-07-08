@@ -251,6 +251,79 @@ const dict: Record<string, { en: string; zh: string }> = {
   toolWhitelistCsv: { en: "Tool whitelist (comma-separated)", zh: "工具白名单（逗号分隔）" },
   toolWhitelistHint: { en: "Empty = every tool the server exposes is allowed", zh: "留空表示允许调用该服务器的全部工具" },
   hourlyToolCallQuota: { en: "Hourly tool-call quota", zh: "每小时工具调用配额" },
+
+  // ---- Keys: cache config + guardrail policy binding -------------------------
+  guardrailPolicy: { en: "Guardrail policy", zh: "防护策略" },
+  useDefaultPolicy: { en: "Use default policy", zh: "使用默认策略" },
+  cacheConfig: { en: "Response cache", zh: "响应缓存" },
+  exactCacheEnabled: { en: "Exact-match cache", zh: "精确匹配缓存" },
+  semanticCacheEnabled: { en: "Semantic cache", zh: "语义缓存" },
+  cacheTtlSec: { en: "Exact cache TTL (sec)", zh: "精确缓存 TTL（秒）" },
+  semanticThreshold: { en: "Semantic similarity threshold", zh: "语义相似度阈值" },
+  semanticCacheTtlSec: { en: "Semantic cache TTL (sec)", zh: "语义缓存 TTL（秒）" },
+  cacheBillingPolicy: { en: "Cache-hit billing", zh: "缓存命中计费" },
+  cacheDiscountPercent: { en: "Discount % on cache hit", zh: "命中折扣（%）" },
+
+  // ---- Settings: semantic cache embedding -------------------------------------
+  semanticCacheEmbedding: { en: "Semantic cache embedding", zh: "语义缓存向量模型" },
+  semanticCacheEmbeddingHint: {
+    en: "Which provider + model generates embeddings for the semantic cache. Empty = semantic cache disabled gateway-wide.",
+    zh: "语义缓存使用的向量模型（提供方 + 模型）。留空表示全局禁用语义缓存。",
+  },
+  embeddingModel: { en: "Embedding model", zh: "向量模型" },
+  embeddingDim: { en: "Embedding dimension", zh: "向量维度" },
+
+  // ---- Model Mappings (D01 fallback-chain editor) -----------------------------
+  modelMappings: { en: "Model Mappings", zh: "模型映射" },
+  addModelMapping: { en: "Add mapping", zh: "新增映射" },
+  selectVirtualKey: { en: "Virtual key", zh: "虚拟 Key" },
+  virtualModelName: { en: "Virtual model name", zh: "虚拟模型名" },
+  realModel: { en: "Real model", zh: "真实模型" },
+  fallbackChain: { en: "Fallback chain", zh: "故障转移链" },
+  fallbackChainHint: {
+    en: "Tried in order after the mapped model, on a retryable upstream failure. Drag to reorder.",
+    zh: "映射模型失败且可重试时，按顺序尝试。可拖拽调整顺序。",
+  },
+  fallbackModelName: { en: "Model name", zh: "模型名" },
+  addFallbackStep: { en: "Add fallback step", zh: "添加回退步骤" },
+  emptyModelMappings: { en: "No mappings for this key", zh: "该 Key 暂无映射" },
+  emptyModelMappingsSub: {
+    en: "Map a virtual model name to a real model, with an optional fallback chain.",
+    zh: "将虚拟模型名映射到真实模型，可选配置故障转移链。",
+  },
+  confirmDeleteModelMapping: { en: "Delete this model mapping?", zh: "确认删除该模型映射？" },
+
+  // ---- Guardrail Policies (D06 checker-chain builder) -------------------------
+  guardrailPolicies: { en: "Guardrail Policies", zh: "防护策略" },
+  addGuardrailPolicy: { en: "Add policy", zh: "新增策略" },
+  guardrailAction: { en: "Action", zh: "处理动作" },
+  failMode: { en: "Fail mode", zh: "故障模式" },
+  isDefaultPolicy: { en: "Default", zh: "默认策略" },
+  boundKeyCount: { en: "Bound keys", zh: "绑定 Key 数" },
+  checkerChain: { en: "Checker chain", zh: "检测链" },
+  checkerChainHint: {
+    en: "An ordered list of checkers run against every request/response. Empty = legacy single rule-engine behavior.",
+    zh: "按顺序对请求/响应执行的检测器列表。留空则使用旧版单引擎行为。",
+  },
+  addChecker: { en: "Add checker", zh: "添加检测器" },
+  removeChecker: { en: "Remove", zh: "移除" },
+  detectors: { en: "Detectors", zh: "检测项" },
+  piiRulesInjectionFlag: { en: "Also flag prompt-injection heuristics", zh: "同时启用提示注入启发式检测" },
+  promptInjectionHint: { en: "No settings — presence in the chain enables this checker.", zh: "无需配置——加入检测链即启用。" },
+  blockedTopicsCsv: { en: "Blocked topics (comma-separated)", zh: "禁止话题（逗号分隔）" },
+  blockedTopicsHint: { en: "Matched case-insensitively", zh: "不区分大小写匹配" },
+  externalTarget: { en: "Target address", zh: "目标地址" },
+  externalTimeoutMs: { en: "Timeout (ms)", zh: "超时（毫秒）" },
+  emptyGuardrailPolicies: { en: "No guardrail policies configured", zh: "尚未配置防护策略" },
+  emptyGuardrailPoliciesSub: {
+    en: "Create a policy to control PII handling and chain additional checkers.",
+    zh: "创建策略以控制 PII 处理方式，并可串联更多检测器。",
+  },
+  confirmDeleteGuardrailPolicy: { en: "Delete this guardrail policy?", zh: "确认删除该防护策略？" },
+
+  // ---- Usage (timeseries page) ------------------------------------------------
+  usage: { en: "Usage", zh: "用量" },
+  daysN: { en: "{n}d", zh: "{n} 天" },
 };
 
 export function t(key: string, lang: Lang): string {

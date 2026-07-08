@@ -153,6 +153,20 @@ export interface VirtualKey {
   envId?: string | null;
   expiresAt?: string | null;
   createdAt: string;
+  piiPolicyId?: number | null;
+  cacheConfig?: CacheConfig | null;
+}
+
+// CacheConfig mirrors keyCacheConfig in backend/internal/biz/respcache.go —
+// stored as the VirtualKey's raw `cacheConfig` JSON column.
+export interface CacheConfig {
+  exactEnabled?: boolean;
+  ttlSec?: number;
+  billingPolicy?: "free" | "discount" | "full";
+  discountPercent?: number;
+  semanticEnabled?: boolean;
+  semanticThreshold?: number;
+  semanticTtlSec?: number;
 }
 
 export interface KeyStats {
@@ -405,6 +419,9 @@ export interface PatternTestResp {
 export interface Settings {
   alertWebhook: string;
   alertWebhookIsOverride: boolean;
+  cacheEmbeddingProviderId?: number;
+  cacheEmbeddingModel?: string;
+  cacheEmbeddingDim?: number;
 }
 
 export interface CreditsRate {
@@ -421,5 +438,41 @@ export interface McpServer {
   baseUrl: string;
   description: string;
   isEnabled: boolean;
+  createdAt: string;
+}
+
+export interface FallbackChainEntry {
+  providerId: number;
+  model: string;
+}
+
+export interface ModelMapping {
+  id: number;
+  virtualKeyId: number;
+  virtualModel: string;
+  realModelId: number;
+  realModel?: { id: number; name: string } | null;
+  isEnabled: boolean;
+  description: string;
+  fallbackChain?: FallbackChainEntry[] | null;
+  createdAt: string;
+}
+
+export interface CheckerConfig {
+  name: "pii_rules" | "prompt_injection" | "topic_fence" | "external";
+  settings?: Record<string, unknown>;
+}
+
+export interface PIIPolicy {
+  id: number;
+  name: string;
+  enabled: boolean;
+  action: "block" | "redact" | "log";
+  isDefault: boolean;
+  ruleConfig?: Record<string, unknown> | null;
+  description: string;
+  checkerChain?: CheckerConfig[] | null;
+  failMode: "open" | "closed";
+  boundKeyCount: number;
   createdAt: string;
 }

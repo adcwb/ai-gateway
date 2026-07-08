@@ -157,3 +157,13 @@ flowchart LR
 - CI 中对 compose 栈跑 Playwright E2E：登录 → 建 Key → 发一条代理请求（脚本化）→ 在审计中看到 → 核对仪表盘计数。P1 转售商出口流程（[路线图](../03-roadmap.md)）是第二条脚本化 E2E。
 - 契约检查：控制台的 API 客户端由 OpenAPI 规范（[D10](10-deployment-and-ops.md)）生成；控制台调用了规范之外的端点即 CI 失败——机械地强制"零私有端点"。
 - RBAC 快照测试：每种角色渲染正确的导航与操作集合。
+
+## 实现笔记（ADR 附录）
+
+实际落地的技术栈比上面的 ADR 决定的要朴素得多（没有 shadcn/ui、没有 Tailwind、没有 TanStack Query/Router、没有 Recharts、没有 react-i18next——取而代之的是手写的 "Signal Terminal" 设计系统与无依赖的 `i18n.ts`/`useAsync`，见 `frontend/CLAUDE.md` 的"技术栈与结构"一节）；这一分歧早于本轮就已存在，这里不再重新讨论。本附录只覆盖本轮（故障转移链编辑器、检测链构建器、缓存/向量模型配置、用量图表）针对上述计划实际落地的部分：
+
+- **接口命名是 `/ai/gateway/pii-policies`，不是本文档接口表里的 `/ai/gateway/guardrail-policies`。** 后端表是 `ai_pii_policies`（[D06](06-security-and-guardrails.md) 第一轮 ADR 已决定不改表名），所以路由跟着资源名走，和本代码库其他 CRUD 路由的命名习惯一致（`/model-items`、`/price-tables` 等）。控制台页面文案仍然是"防护策略"。
+- **模型映射和防护策略各自是独立的顶级页面**（`ModelMappings.tsx`、`GuardrailPolicies.tsx`），而不是像模块 3/8 的示意图那样折叠进 Providers 页面的"故障转移链"条或 Settings 的子 Tab——实际的控制台导航按操作/管理/观察三个分组（`frontend/CLAUDE.md`），这两个页面作为管理分组下的独立列表 CRUD 页面，和该分组下其他资源（MCP 服务器、模型与价格表）保持一致。
+- **故障转移链的编辑放在模型映射页面，而不是内嵌在 Providers 页面**——真正拥有 `fallback_chain` 的是映射（`AIModelMapping`，归属于某个虚拟 Key），不是 provider；模块 3 示意图里 `gpt-4o: openai → azure → dash:qwen-max` 内嵌在 provider 表格下方的画法把两个资源混在了一起。`ModelMappings.tsx` 把虚拟 Key 选择器、映射表格与一个 `@dnd-kit` 拖拽编辑器组合在一起，对应 [D01](01-routing-and-lb.md) 的 ADR 附录。
+- **创建 Key 时的缓存/防护策略选择器是两个普通表单字段，不是三步向导。** 设计里模块 2 画的是"① 基础信息 → ② 配额 → ③ 访问"三步向导；实际落地是把缓存配置字段组和防护策略下拉框直接加到既有的单页创建表单（`Keys.tsx`）里，和该表单上其他字段组的做法一致——没有引入多步流程。
+- **用量页面**（`Usage.tsx`，观察分组）：一个 7/14/30/90 天范围选择器，驱动四个单序列 `AreaChart`（请求数、输入 Token、输出 Token、计费积分），数据来自既有的 `GET /ai/gateway/stats/timeseries`。按模型/按 Key 拆分和缓存命中率序列本来也在考虑范围内，但被砍掉了——`UsageTimeseries` 不按模型/Key 分组，也不按天返回缓存命中数（只有 `UsageOverview` 的 top-models 列表才有），补上这个分组是后端改动，超出了一个纯前端页面的范围。

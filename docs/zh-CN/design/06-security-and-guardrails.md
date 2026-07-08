@@ -108,3 +108,15 @@ type Checker interface {
 - 链语义：超时遵循失败模式；checker panic 被收容；block 短路后续 checker。
 - 流式：注入的终止事件对每种入口编解码器都方言正确。
 - 安全评审门槛（[路线图](../03-roadmap.md) P0-4）：数据库导出不含任何明文上游凭证。
+
+## 实现笔记（ADR 附录）
+
+> 注：本文档英文版的 P2 管线落地细节（第一、二轮 ADR）尚未回填到中文版；以下第三轮是本轮新增内容的完整翻译。
+
+### 第三轮：`AIPIIPolicy` 管理 CRUD + 控制台检测链构建器
+
+补上[控制台设计文档](08-web-console.md)早已在其接口表里预留（`guardrail-policies` 路由）、但此前完全没有后端支撑的"控制台 UI"缺口——`resolvePIIPolicy`/`buildChainForPolicy` 此前只能读一条由人工直接写入数据库的策略。
+
+- **路由是 `/ai/gateway/pii-policies`，不是 `/ai/gateway/guardrail-policies`。** 表仍叫 `ai_pii_policies`（第一轮 ADR 已决定不改表名），所以管理路由跟着表/资源命名，而不是跟着这条管线更新的营销名字——和本项目一贯的 CRUD 路由命名习惯一致（`/model-items`、`/price-tables` 等按资源命名，不按功能故事命名）。控制台页面标题/文案仍然是"防护策略"（`GuardrailPolicies.tsx`，i18n key 为 `guardrailPolicies`/`navManage`），因为这是面向运维人员的概念；只有 URL 和设计文档的示意不同。
+- **`internal/biz/pii_policy_admin.go`**（沿用 `mcp_admin.go` 的写法）：Create/List/Update/Delete，全局对象姿态（仅平台管理员可写），和本代码库其他管理资源一致。有两处不是通用 CRUD 模板能覆盖的行为：`ListPIIPolicies` 通过对 `ai_virtual_keys` 做 `COUNT(*) ... GROUP BY pii_policy_id`，回填此前定义了但一直是零值的 `BoundKeyCount` 字段；Create/Update 在一个数据库事务里强制**最多只有一条 `isDefault=true` 的策略**（先把其他所有行的该标志清零）——`resolvePIIPolicy` 的默认策略回退查询一直假设"恰好存在一条默认策略"，此前没有任何机制阻止运维人员创建两条，那样"到底哪条是默认策略"就取决于未定义的查询顺序。
+- **控制台的检测链构建器是加/删，不是拖拽排序**——这是相对于（[D01](01-routing-and-lb.md)）模型映射故障转移链编辑器的一个刻意的不对称设计。故障转移链的"顺序"就是它存在的全部意义（先试的候选先被尝试）；检测链的顺序则没那么重要（每个 checker 都是独立地按链级 `policy.Action` 判定放行/拦截/脱敏），所以为第二个列表也接入 `@dnd-kit` 被认为不值得——加到末尾加一个删除按钮就够用了。每种 checker 都有自己的设置卡片：`pii_rules` 渲染一个检测项复选框网格（`cn_id_card`/`cn_mobile`/`bank_card`/`email`/`ipv4`/`api_secret`，与 `pii_engine.go` 的检测器列表逐一对应）外加旧版 `promptInjection` 复选框；`prompt_injection`、`topic_fence`（逗号分隔的禁止话题输入框）和 `external`（目标地址 + 超时毫秒数）各自渲染各自的设置结构，逐字段对应 `guardrail_pipeline.go` 的 `checkerConfig`/`*Settings` 结构体，确保控制台不会和后端真正解析的内容脱节。

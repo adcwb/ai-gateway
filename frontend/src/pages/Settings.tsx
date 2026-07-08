@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, useAsync, type CreditsRate, type Settings as SettingsResp } from "../api/client";
+import { api, useAsync, type CreditsRate, type Provider, type Settings as SettingsResp } from "../api/client";
 import { t, type Lang } from "../i18n";
 import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
 
@@ -20,6 +20,33 @@ export default function Settings({ lang }: { lang: Lang }) {
     try {
       await api.put("/ai/gateway/settings", { alertWebhook: webhookInput });
       setTestResult("");
+      settingsQ.refresh();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
+  };
+
+  // ---- Semantic cache embedding config ----------------------------------------
+  const providersQ = useAsync<Provider[]>((s) => api.get<Provider[]>("/ai/gateway/providers", { signal: s }), []);
+  const providers = providersQ.data ?? [];
+  const [embedding, setEmbedding] = useState({ providerId: 0, model: "", dim: 0 });
+  useEffect(() => {
+    if (settingsQ.data) {
+      setEmbedding({
+        providerId: settingsQ.data.cacheEmbeddingProviderId || 0,
+        model: settingsQ.data.cacheEmbeddingModel || "",
+        dim: settingsQ.data.cacheEmbeddingDim || 0,
+      });
+    }
+  }, [settingsQ.data]);
+
+  const saveEmbedding = async () => {
+    try {
+      await api.put("/ai/gateway/settings", {
+        cacheEmbeddingProviderId: embedding.providerId || 0,
+        cacheEmbeddingModel: embedding.model,
+        cacheEmbeddingDim: embedding.dim || 0,
+      });
       settingsQ.refresh();
     } catch (err) {
       setActionError((err as Error).message);
@@ -77,7 +104,7 @@ export default function Settings({ lang }: { lang: Lang }) {
     }
   };
 
-  const showError = actionError || (settingsQ.error ? `${t("loadFailed", lang)}: ${settingsQ.error}` : "") || (ratesQ.error ? `${t("loadFailed", lang)}: ${ratesQ.error}` : "");
+  const showError = actionError || (settingsQ.error ? `${t("loadFailed", lang)}: ${settingsQ.error}` : "") || (ratesQ.error ? `${t("loadFailed", lang)}: ${ratesQ.error}` : "") || (providersQ.error ? `${t("loadFailed", lang)}: ${providersQ.error}` : "");
 
   return (
     <div>
@@ -88,7 +115,7 @@ export default function Settings({ lang }: { lang: Lang }) {
         </div>
       </div>
 
-      {showError && <ErrorBanner message={showError} onRetry={() => { setActionError(""); settingsQ.refresh(); ratesQ.refresh(); }} />}
+      {showError && <ErrorBanner message={showError} onRetry={() => { setActionError(""); settingsQ.refresh(); ratesQ.refresh(); providersQ.refresh(); }} />}
 
       <div className="card mb-16">
         <div className="label mb-16">{t("alertWebhook", lang)}</div>
@@ -106,6 +133,31 @@ export default function Settings({ lang }: { lang: Lang }) {
           </div>
         </div>
         {testResult && <div className="sub mt-8">{testResult}</div>}
+      </div>
+
+      <div className="card mb-16">
+        <div className="label mb-16">{t("semanticCacheEmbedding", lang)}</div>
+        <div className="sub mb-8">{t("semanticCacheEmbeddingHint", lang)}</div>
+        <div className="form-grid">
+          <label className="field">
+            <div className="field-label">{t("provider", lang)}</div>
+            <select value={embedding.providerId} onChange={(e) => setEmbedding({ ...embedding, providerId: Number(e.target.value) })}>
+              <option value={0}>—</option>
+              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <div className="field-label">{t("embeddingModel", lang)}</div>
+            <input value={embedding.model} onChange={(e) => setEmbedding({ ...embedding, model: e.target.value })} placeholder="text-embedding-3-small" />
+          </label>
+          <label className="field">
+            <div className="field-label">{t("embeddingDim", lang)}</div>
+            <input type="number" min="0" value={embedding.dim || ""} onChange={(e) => setEmbedding({ ...embedding, dim: Number(e.target.value) || 0 })} />
+          </label>
+          <div className="form-actions">
+            <button onClick={saveEmbedding}><Icon name="check" size={14} /> {t("save", lang)}</button>
+          </div>
+        </div>
       </div>
 
       <div className="topbar">
