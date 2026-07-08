@@ -934,14 +934,16 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			w.WriteHeader(http.StatusOK)
 			scanner := bufio.NewScanner(resp.Body)
 			scanner.Buffer(make([]byte, 64<<10), 4<<20)
+			streamW, guardWriter := uc.wrapStreamForGuardrail(ctx, key, w)
 			switch providerDialect {
 			case model.ProviderTypeGemini:
-				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateGeminiStream(w, scanner, realModelName)
+				respBody, promptTokens, completionTokens, cachedTokens, streamErr = translateGeminiStream(streamW, scanner, realModelName)
 			case model.ProviderTypeBedrock:
-				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateBedrockStream(w, resp.Body, realModelName)
+				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateBedrockStream(streamW, resp.Body, realModelName)
 			default:
-				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateAnthropicStream(w, scanner, realModelName)
+				respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, streamErr = translateAnthropicStream(streamW, scanner, realModelName)
 			}
+			ctx = uc.foldGuardrailStreamVerdict(ctx, guardWriter)
 		} else {
 			raw, _ := io.ReadAll(resp.Body)
 			var translated []byte
@@ -988,8 +990,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			}
 		}
 		w.WriteHeader(resp.StatusCode)
+		streamW, guardWriter := uc.wrapStreamForGuardrail(ctx, key, w)
 		var reasoningTokens int
-		respBody, promptTokens, completionTokens, cachedTokens, reasoningTokens, streamErr = streamProxy(w, resp.Body)
+		respBody, promptTokens, completionTokens, cachedTokens, reasoningTokens, streamErr = streamProxy(streamW, resp.Body)
+		ctx = uc.foldGuardrailStreamVerdict(ctx, guardWriter)
 		if promptTokens == 0 && completionTokens == 0 && resp.StatusCode == http.StatusOK {
 			p, c, cached, reasoning := parseUsageFromBody(respBody)
 			if p > 0 || c > 0 {

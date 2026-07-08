@@ -30,6 +30,13 @@ type piiRulesSettings struct {
 	PromptInjection bool            `json:"promptInjection"`
 }
 
+// topicFenceSettings is the shape of the "topic_fence" checker's settings
+// object in a policy's checker_chain (docs/design/06-security-and-
+// guardrails.md P2): a curated blocklist, matched case-insensitively.
+type topicFenceSettings struct {
+	BlockedTopics []string `json:"blockedTopics"`
+}
+
 var chainCache sync.Map // policyID → chainCacheEntry
 
 type chainCacheEntry struct {
@@ -69,6 +76,14 @@ func (uc *GatewayUseCase) buildChainForPolicy(policy *model.AIPIIPolicy, tenantN
 			}
 			action := guardrail.Action(policy.Action)
 			checkers = append(checkers, newPIIRulesChecker(s.Detectors, s.PromptInjection, action))
+		case "prompt_injection":
+			checkers = append(checkers, newPromptInjectionChecker(guardrail.Action(policy.Action)))
+		case "topic_fence":
+			var s topicFenceSettings
+			if len(cc.Settings) > 0 {
+				_ = json.Unmarshal(cc.Settings, &s)
+			}
+			checkers = append(checkers, newTopicFenceChecker(s.BlockedTopics, guardrail.Action(policy.Action)))
 		case "external":
 			var s externalCheckerSettings
 			if len(cc.Settings) > 0 {
