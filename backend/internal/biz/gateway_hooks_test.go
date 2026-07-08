@@ -42,7 +42,7 @@ func newTestGatewayForHooks(t *testing.T) (*GatewayUseCase, *gorm.DB) {
 	if err := db.AutoMigrate(
 		&model.AIProvider{}, &model.AIVirtualKey{}, &model.AIModelMapping{}, &model.AIModelItem{},
 		&model.AICreditsRate{}, &model.AIGatewayAuditLog{}, &model.AIGatewayAuditLogBody{},
-		&model.AIGatewayQuotaEvent{}, &model.AITenant{},
+		&model.AIGatewayQuotaEvent{}, &model.AITenant{}, &model.AIResponseState{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

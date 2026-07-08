@@ -51,6 +51,11 @@ type Redis struct {
 type AI struct {
 	ProxyTimeoutSec int `yaml:"proxy_timeout_sec"`
 	AgentTimeoutSec int `yaml:"agent_timeout_sec"`
+	// ResponsesStateTTLHours controls how long a stored Responses API
+	// conversation (docs/design/02-protocol-adapters.md, store=true) stays
+	// resumable via previous_response_id before the sweeper deletes it.
+	// 0 (unset) defaults to 24h.
+	ResponsesStateTTLHours int `yaml:"responses_state_ttl_hours"`
 }
 
 type System struct {

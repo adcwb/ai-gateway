@@ -12,11 +12,12 @@ import (
 // same edge-only translation pattern as the Anthropic Messages codec
 // (protocol_anthropic_inbound.go) — decode Responses request → OpenAI
 // chat-completions body, encode OpenAI chat response/stream → Responses
-// shape. Stateless subset only: previous_response_id chaining and
-// store=true (server-side retrieval of a completed response by ID) are
-// rejected outright rather than silently ignored, since the gateway does
-// not persist Responses state — this was flagged as an open question in
-// D02 and is resolved here as "not supported" rather than faked.
+// shape. previous_response_id/store=true are supported via
+// internal/biz/responses_state.go's server-side conversation persistence
+// (ai_gateway_responses) — resolving previous_response_id is the caller's
+// (ProxyResponses, responses_api.go) job, since that needs DB + virtual-key
+// scoping this file doesn't have; responsesToOpenAIChatRequest just prepends
+// whatever prior messages the caller already resolved.
 
 type respInputContentPart struct {
 	Type string `json:"type"`
@@ -52,17 +53,13 @@ type responsesRequest struct {
 }
 
 // responsesToOpenAIChatRequest maps a Responses API request onto the OpenAI
-// chat-completions body shape.
-func responsesToOpenAIChatRequest(body []byte) ([]byte, bool, error) {
+// chat-completions body shape. priorMessages (already resolved by the
+// caller from previous_response_id, if any) are prepended before
+// instructions/new input.
+func responsesToOpenAIChatRequest(body []byte, priorMessages []map[string]interface{}) ([]byte, bool, error) {
 	var in responsesRequest
 	if err := json.Unmarshal(body, &in); err != nil {
 		return nil, false, err
-	}
-	if in.PreviousResponseID != "" {
-		return nil, false, fmt.Errorf("previous_response_id chaining is not supported by this gateway (no server-side response persistence)")
-	}
-	if in.Store != nil && *in.Store {
-		return nil, false, fmt.Errorf("store=true is not supported by this gateway (no server-side response persistence for later retrieval)")
 	}
 
 	out := map[string]interface{}{"model": in.Model, "stream": in.Stream}
@@ -97,7 +94,7 @@ func responsesToOpenAIChatRequest(body []byte) ([]byte, bool, error) {
 		}
 	}
 
-	messages := []map[string]interface{}{}
+	messages := append([]map[string]interface{}{}, priorMessages...)
 	if in.Instructions != "" {
 		messages = append(messages, map[string]interface{}{"role": "system", "content": in.Instructions})
 	}
@@ -205,14 +202,19 @@ func responsesErrorBody(message, code string) []byte {
 // a Responses API response, tracking reasoning tokens through so a client on
 // a real reasoning-capable OpenAI upstream sees a non-zero breakdown
 // (previously always 0 — the identity dialect never parsed this field until
-// the Responses API entrance needed it, see parseUsageFromBody).
-func openAIChatToResponses(oaBody []byte, requestedModel string) []byte {
+// the Responses API entrance needed it, see parseUsageFromBody). responseID
+// is minted by the caller (ProxyResponses) rather than derived from the
+// upstream chat completion ID, so it can double as the storage key for
+// store=true (docs/design/02-protocol-adapters.md). assistantMsg is the
+// OpenAI chat-message-shaped turn to append to stored conversation state —
+// nil for an error response, which is never stored.
+func openAIChatToResponses(oaBody []byte, requestedModel, responseID string) (translated []byte, assistantMsg map[string]interface{}) {
 	if msg, code, isErr := openAIJSONIsError(oaBody); isErr {
-		return responsesErrorBody(msg, code)
+		return responsesErrorBody(msg, code), nil
 	}
 	var in oaChatResponseForResponses
 	if err := json.Unmarshal(oaBody, &in); err != nil || len(in.Choices) == 0 {
-		return responsesErrorBody("malformed upstream response", "api_error")
+		return responsesErrorBody("malformed upstream response", "api_error"), nil
 	}
 	choice := in.Choices[0]
 
@@ -221,15 +223,24 @@ func openAIChatToResponses(oaBody []byte, requestedModel string) []byte {
 	_ = json.Unmarshal(choice.Message.Content, &textContent)
 	if textContent != "" {
 		output = append(output, map[string]interface{}{
-			"type": "message", "id": "msg_" + in.ID, "role": "assistant", "status": "completed",
+			"type": "message", "id": "msg_" + responseID, "role": "assistant", "status": "completed",
 			"content": []map[string]interface{}{{"type": "output_text", "text": textContent, "annotations": []interface{}{}}},
 		})
 	}
-	for _, tc := range choice.Message.ToolCalls {
-		output = append(output, map[string]interface{}{
-			"type": "function_call", "id": "fc_" + tc.ID, "call_id": tc.ID,
-			"name": tc.Function.Name, "arguments": tc.Function.Arguments,
-		})
+	assistantMsg = map[string]interface{}{"role": "assistant", "content": textContent}
+	if len(choice.Message.ToolCalls) > 0 {
+		toolCalls := make([]map[string]interface{}, 0, len(choice.Message.ToolCalls))
+		for _, tc := range choice.Message.ToolCalls {
+			output = append(output, map[string]interface{}{
+				"type": "function_call", "id": "fc_" + tc.ID, "call_id": tc.ID,
+				"name": tc.Function.Name, "arguments": tc.Function.Arguments,
+			})
+			toolCalls = append(toolCalls, map[string]interface{}{
+				"id": tc.ID, "type": "function",
+				"function": map[string]interface{}{"name": tc.Function.Name, "arguments": tc.Function.Arguments},
+			})
+		}
+		assistantMsg["tool_calls"] = toolCalls
 	}
 	if output == nil {
 		output = []map[string]interface{}{}
@@ -244,7 +255,7 @@ func openAIChatToResponses(oaBody []byte, requestedModel string) []byte {
 	}
 
 	out := map[string]interface{}{
-		"id": "resp_" + in.ID, "object": "response", "status": "completed", "model": requestedModel,
+		"id": responseID, "object": "response", "status": "completed", "model": requestedModel,
 		"output": output,
 		"usage": map[string]interface{}{
 			"input_tokens":          in.Usage.PromptTokens,
@@ -255,7 +266,7 @@ func openAIChatToResponses(oaBody []byte, requestedModel string) []byte {
 		},
 	}
 	b, _ := json.Marshal(out)
-	return b
+	return b, assistantMsg
 }
 
 // openAIStreamToResponsesSSE mirrors openAIStreamToAnthropicSSE
@@ -264,12 +275,17 @@ func openAIChatToResponses(oaBody []byte, requestedModel string) []byte {
 // response.output_text.delta, response.function_call_arguments.delta,
 // response.completed — not the full Responses API event taxonomy (which also
 // has per-item added/done events, reasoning-summary events, etc.); noted as
-// an explicit scope limit rather than claimed spec parity.
-func openAIStreamToResponsesSSE(r io.Reader, w io.Writer, requestedModel string) (promptTokens, completionTokens, cacheReadTokens, reasoningTokens int, errMsg string) {
+// an explicit scope limit rather than claimed spec parity. responseID is
+// minted by the caller (same as openAIChatToResponses) rather than derived
+// from requestedModel — the old "resp_"+requestedModel wasn't unique across
+// requests for the same model, a latent bug for any persistence, fixed here
+// regardless of whether store was requested. assistantMsg (see
+// openAIChatToResponses) is nil if the stream reported an error.
+func openAIStreamToResponsesSSE(r io.Reader, w io.Writer, requestedModel, responseID string) (promptTokens, completionTokens, cacheReadTokens, reasoningTokens int, errMsg string, assistantMsg map[string]interface{}) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
 
-	respID := "resp_" + requestedModel
+	respID := responseID
 	started := false
 	var textBuilder strings.Builder
 	var toolCalls []map[string]interface{}
@@ -402,5 +418,19 @@ func openAIStreamToResponsesSSE(r io.Reader, w io.Writer, requestedModel string)
 			},
 		},
 	})
+
+	if errMsg == "" {
+		assistantMsg = map[string]interface{}{"role": "assistant", "content": textBuilder.String()}
+		if len(toolCalls) > 0 {
+			oaToolCalls := make([]map[string]interface{}, 0, len(toolCalls))
+			for _, tc := range toolCalls {
+				oaToolCalls = append(oaToolCalls, map[string]interface{}{
+					"id": tc["call_id"], "type": "function",
+					"function": map[string]interface{}{"name": tc["name"], "arguments": tc["arguments"]},
+				})
+			}
+			assistantMsg["tool_calls"] = oaToolCalls
+		}
+	}
 	return
 }

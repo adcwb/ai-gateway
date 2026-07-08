@@ -94,6 +94,7 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIExtension{},
 		&model.AIEventLogEntry{},
 		&model.AIEventCursor{},
+		&model.AIResponseState{},
 	)
 }
 

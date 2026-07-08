@@ -8,7 +8,7 @@ import (
 
 func TestResponsesToOpenAIChatRequestPlainString(t *testing.T) {
 	in := []byte(`{"model":"gpt-4o","input":"hello there","instructions":"be brief","max_output_tokens":100,"stream":true}`)
-	out, isStream, err := responsesToOpenAIChatRequest(in)
+	out, isStream, err := responsesToOpenAIChatRequest(in, nil)
 	if err != nil {
 		t.Fatalf("translate: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestResponsesToOpenAIChatRequestFunctionCallOutput(t *testing.T) {
 		{"role":"user","content":[{"type":"input_text","text":"weather in SH?"}]},
 		{"type":"function_call_output","call_id":"c1","output":"sunny"}
 	]}`)
-	out, _, err := responsesToOpenAIChatRequest(in)
+	out, _, err := responsesToOpenAIChatRequest(in, nil)
 	if err != nil {
 		t.Fatalf("translate: %v", err)
 	}
@@ -55,17 +55,32 @@ func TestResponsesToOpenAIChatRequestFunctionCallOutput(t *testing.T) {
 	}
 }
 
-func TestResponsesToOpenAIChatRequestRejectsPreviousResponseID(t *testing.T) {
-	in := []byte(`{"model":"gpt-4o","input":"hi","previous_response_id":"resp_123"}`)
-	if _, _, err := responsesToOpenAIChatRequest(in); err == nil {
-		t.Fatal("expected previous_response_id to be rejected")
+// TestResponsesToOpenAIChatRequestPrependsPriorMessages covers
+// previous_response_id continuation (docs/design/02-protocol-adapters.md):
+// resolving the ID itself is responses_api.go's job (DB + key ownership),
+// but once resolved, this function must prepend the prior turns before the
+// new instructions/input.
+func TestResponsesToOpenAIChatRequestPrependsPriorMessages(t *testing.T) {
+	prior := []map[string]interface{}{
+		{"role": "user", "content": "hi"},
+		{"role": "assistant", "content": "hello"},
 	}
-}
-
-func TestResponsesToOpenAIChatRequestRejectsStoreTrue(t *testing.T) {
-	in := []byte(`{"model":"gpt-4o","input":"hi","store":true}`)
-	if _, _, err := responsesToOpenAIChatRequest(in); err == nil {
-		t.Fatal("expected store=true to be rejected")
+	in := []byte(`{"model":"gpt-4o","input":"how are you"}`)
+	out, _, err := responsesToOpenAIChatRequest(in, prior)
+	if err != nil {
+		t.Fatalf("translate: %v", err)
+	}
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	msgs := m["messages"].([]interface{})
+	if len(msgs) != 3 {
+		t.Fatalf("messages = %d, want 3 (2 prior + 1 new): %v", len(msgs), msgs)
+	}
+	if msgs[0].(map[string]interface{})["content"] != "hi" || msgs[1].(map[string]interface{})["content"] != "hello" {
+		t.Fatalf("prior messages not prepended in order: %v", msgs)
+	}
+	if msgs[2].(map[string]interface{})["content"] != "how are you" {
+		t.Fatalf("new input not appended after prior messages: %v", msgs)
 	}
 }
 
@@ -77,8 +92,9 @@ func TestOpenAIChatToResponsesSuccess(t *testing.T) {
 			"prompt_tokens_details": {"cached_tokens": 1},
 			"completion_tokens_details": {"reasoning_tokens": 2}}
 	}`)
-	out := openAIChatToResponses(oa, "gpt-4o")
+	out, assistantMsg := openAIChatToResponses(oa, "gpt-4o", "resp_test123")
 	var m struct {
+		ID     string `json:"id"`
 		Object string `json:"object"`
 		Status string `json:"status"`
 		Model  string `json:"model"`
@@ -102,6 +118,9 @@ func TestOpenAIChatToResponsesSuccess(t *testing.T) {
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatalf("output not JSON: %v\n%s", err, out)
 	}
+	if m.ID != "resp_test123" {
+		t.Fatalf("expected the caller-minted response ID to be used, got %q", m.ID)
+	}
 	if m.Object != "response" || m.Status != "completed" || m.Model != "gpt-4o" {
 		t.Fatalf("envelope wrong: %+v", m)
 	}
@@ -111,11 +130,14 @@ func TestOpenAIChatToResponsesSuccess(t *testing.T) {
 	if m.Usage.InputTokens != 5 || m.Usage.OutputTokens != 3 || m.Usage.InputTokensDetails.CachedTokens != 1 || m.Usage.OutputTokensDetails.ReasoningTokens != 2 {
 		t.Fatalf("usage wrong: %+v", m.Usage)
 	}
+	if assistantMsg["role"] != "assistant" || assistantMsg["content"] != "hi there" {
+		t.Fatalf("assistantMsg (for storage) wrong: %+v", assistantMsg)
+	}
 }
 
 func TestOpenAIChatToResponsesErrorShape(t *testing.T) {
 	oa := []byte(`{"error":{"message":"bad model","code":"MODEL_NOT_ALLOWED"}}`)
-	out := openAIChatToResponses(oa, "gpt-4o")
+	out, assistantMsg := openAIChatToResponses(oa, "gpt-4o", "resp_test123")
 	var m struct {
 		Error struct {
 			Message string `json:"message"`
@@ -125,6 +147,9 @@ func TestOpenAIChatToResponsesErrorShape(t *testing.T) {
 	json.Unmarshal(out, &m)
 	if m.Error.Message != "bad model" {
 		t.Fatalf("error translation wrong: %+v", m)
+	}
+	if assistantMsg != nil {
+		t.Fatalf("expected no assistantMsg (nothing to store) for an error response, got %+v", assistantMsg)
 	}
 }
 
@@ -139,7 +164,7 @@ func TestOpenAIStreamToResponsesSSE(t *testing.T) {
 	}, "\n")
 
 	var out strings.Builder
-	p, c, _, _, errMsg := openAIStreamToResponsesSSE(strings.NewReader(sse), &out, "gpt-4o")
+	p, c, _, _, errMsg, assistantMsg := openAIStreamToResponsesSSE(strings.NewReader(sse), &out, "gpt-4o", "resp_test123")
 	if errMsg != "" {
 		t.Fatalf("unexpected stream error: %s", errMsg)
 	}
@@ -147,9 +172,12 @@ func TestOpenAIStreamToResponsesSSE(t *testing.T) {
 		t.Fatalf("usage wrong: p=%d c=%d", p, c)
 	}
 	text := out.String()
-	for _, want := range []string{"event: response.created", "event: response.output_text.delta", `"delta":"Hi"`, "event: response.completed"} {
+	for _, want := range []string{"event: response.created", "event: response.output_text.delta", `"delta":"Hi"`, "event: response.completed", `"id":"resp_test123"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in output:\n%s", want, text)
 		}
+	}
+	if assistantMsg["role"] != "assistant" || assistantMsg["content"] != "Hi" {
+		t.Fatalf("assistantMsg (for storage) wrong: %+v", assistantMsg)
 	}
 }

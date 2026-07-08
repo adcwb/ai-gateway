@@ -66,4 +66,7 @@ var (
 	ErrExtensionNotFound   = kerrors.NotFound("EXTENSION_NOT_FOUND", "extension not found")
 	ErrExtensionInvalid    = kerrors.BadRequest("EXTENSION_INVALID", "extension name, kind, and hooks are required")
 	ErrExtensionNameExists = kerrors.BadRequest("EXTENSION_NAME_EXISTS", "an extension with this name already exists")
+
+	// Responses API server-side state (docs/design/02-protocol-adapters.md).
+	ErrResponseStateNotFound = kerrors.BadRequest("PREVIOUS_RESPONSE_NOT_FOUND", "previous_response_id not found or expired")
 )

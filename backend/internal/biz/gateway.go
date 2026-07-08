@@ -950,7 +950,12 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			switch providerDialect {
 			case model.ProviderTypeGemini:
 				translated, p, c, cached, terr = geminiToOpenAIResponse(raw, realModelName)
-			default: // anthropic, bedrock (bedrock Claude invoke sync body IS native Anthropic Messages JSON)
+			case model.ProviderTypeBedrock:
+				// bedrockToOpenAIResponse dispatches by model family — Claude invoke
+				// sync body IS native Anthropic Messages JSON (anthropicToOpenAIResponse
+				// reused as-is); Titan/Llama/Mistral/Nova each have their own shape.
+				translated, p, c, cached, cacheCreated, terr = bedrockToOpenAIResponse(raw, realModelName)
+			default: // anthropic
 				translated, p, c, cached, cacheCreated, terr = anthropicToOpenAIResponse(raw, realModelName)
 			}
 			if terr != nil {
@@ -2147,6 +2152,7 @@ func (uc *GatewayUseCase) StartBackgroundWorkers(ctx context.Context) {
 	go StartQuotaReleaseSweeper(ctx, uc.db, uc.rdb, uc.rawLog)
 	go uc.StartActiveHealthProbes(ctx)
 	go uc.StartBatchSettlementPoller(ctx)
+	go StartResponsesStateSweeper(ctx, uc.db, uc.rawLog)
 	uc.EnsureTenancyDefaults(ctx)
 	if uc.billing != nil {
 		uc.billing.Start(ctx)

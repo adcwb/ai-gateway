@@ -25,6 +25,13 @@ func newTestBilling(t *testing.T) (*BillingManager, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	// A plain ":memory:" sqlite DB is scoped per-connection; force a single
+	// pooled connection so the eventbus's background goroutines (started by
+	// tests that wire one in) see the same schema this constructor migrates —
+	// same fix as every other sqlite-backed test harness in this package.
+	if sqlDB, derr := db.DB(); derr == nil {
+		sqlDB.SetMaxOpenConns(1)
+	}
 	if err := db.AutoMigrate(&model.AIBillingAccount{}, &model.AIBillingLedger{}, &model.AIUsageDaily{},
 		&model.AIPriceTable{}, &model.AIPriceTableItem{}, &model.AIModelItem{}, &model.AICreditsRate{}); err != nil {
 		t.Fatalf("migrate: %v", err)
