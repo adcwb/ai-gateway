@@ -68,6 +68,11 @@ type AIGatewayAuditLog struct {
 	// Empty when tracing is disabled or the request's span was not sampled.
 	TraceID string `gorm:"column:trace_id;type:varchar(32);index" json:"traceId"`
 	SpanID  string `gorm:"column:span_id;type:varchar(16)" json:"spanId"`
+
+	// HookLabels are annotate-only key/value pairs contributed by pre_request/
+	// post_response extensions (docs/design/09-extensibility.md "Hook points").
+	// Empty when no hook ran or none set a label.
+	HookLabels datatypes.JSON `gorm:"column:hook_labels;type:json" json:"hookLabels"`
 }
 
 func (AIGatewayAuditLog) TableName() string { return "ai_gateway_audit_logs" }

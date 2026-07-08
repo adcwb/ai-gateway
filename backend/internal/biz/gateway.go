@@ -27,6 +27,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
+	"github.com/opscenter/ai-gateway/internal/biz/extension"
 	"github.com/opscenter/ai-gateway/internal/biz/vectorindex"
 	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/data/model"
@@ -52,7 +54,23 @@ type GatewayUseCase struct {
 	// operator-configured embedding dimensionality (internal/biz/semantic_cache.go).
 	vectorIndex    vectorindex.Index
 	vectorIndexDim int
+
+	// hooks/eventBus are optional (docs/design/09-extensibility.md) and, like
+	// vectorIndex, set post-construction via a setter rather than threaded
+	// through NewGatewayUseCase — that constructor already has ten positional
+	// params and every test in this package calls it positionally; a setter
+	// avoids a mass mechanical edit for two more optional, nil-safe fields.
+	hooks    *extension.Dispatcher
+	eventBus *eventbus.Bus
 }
+
+// SetHookDispatcher wires the pre_request/post_response Dispatcher in. Called
+// once from cmd/server/wire_gen.go; nil (the zero value) means every hook
+// call site is a no-op, matching how billing/router being nil already works.
+func (uc *GatewayUseCase) SetHookDispatcher(d *extension.Dispatcher) { uc.hooks = d }
+
+// SetEventBus wires the on_audit/on_billing event bus in. See SetHookDispatcher.
+func (uc *GatewayUseCase) SetEventBus(b *eventbus.Bus) { uc.eventBus = b }
 
 // NewGatewayUseCase constructs a GatewayUseCase via Wire DI.
 func NewGatewayUseCase(
@@ -577,6 +595,34 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	}
 	body = piiOut.NewBody
 
+	// tenantID/requestID are computed here (rather than at the billing gate
+	// further down, where they used to live) because the pre_request hook
+	// (docs/design/09-extensibility.md) needs both — hoisting is safe since
+	// tenantIDForKey is a cheap, side-effect-free cached lookup and
+	// generateRequestID is pure.
+	tenantID := uc.tenantIDForKey(ctx, key)
+	requestID := generateRequestID()
+
+	// pre_request 扩展钩子（docs/design/09-extensibility.md "Hook points"）：
+	// 在护栏之后、路由之前运行，可改写请求体、拒绝请求，或仅打标签。
+	if uc.hooks != nil {
+		hookRes := uc.hooks.RunSync(ctx, extension.PreRequest, extension.Event{TenantID: tenantID, RequestID: requestID, IR: body})
+		if hookRes.Action == extension.ActionReject {
+			uc.writeAuditLog(ctx, key, key.ProviderID, "", body, nil, 0, 0, 0, 0, 0, http.StatusBadRequest, "extension rejected: "+hookRes.Reason, false, ClientIPFromRequest(r), "openai", 0, 0, "")
+			errMsg, _ := json.Marshal(map[string]interface{}{
+				"error": map[string]string{"message": hookRes.Reason, "code": "EXTENSION_REJECTED"},
+			})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write(errMsg)
+			return
+		}
+		if hookRes.Action == extension.ActionMutate && len(hookRes.Patch) > 0 {
+			body = hookRes.Patch
+		}
+		ctx = withHookLabels(ctx, hookRes.Labels)
+	}
+
 	// 解析请求模型 & 统一解析目标模型
 	requestedModel := extractModel(body)
 	var realModelName string
@@ -612,8 +658,6 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 
 	// 计费闸门（P1，docs/design/03-billing-and-monetization.md）：
 	// 租户账户停用/余额不足 → 402；否则按估算冻结，响应后按实际结算。
-	tenantID := uc.tenantIDForKey(ctx, key)
-	requestID := generateRequestID()
 	var freeze *FreezeHandle
 	if uc.billing != nil {
 		var admitErr error
@@ -918,6 +962,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			} else {
 				var blocked bool
 				ctx, translated, blocked = uc.applyOutboundGuardrail(ctx, key, translated)
+				if !blocked {
+					ctx, translated, blocked = uc.runPostResponseHook(ctx, tenantID, translated)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				if blocked {
 					w.WriteHeader(http.StatusBadRequest)
@@ -959,6 +1006,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		blocked := false
 		if resp.StatusCode < 300 {
 			ctx, finalBody, blocked = uc.applyOutboundGuardrail(ctx, key, raw)
+			if !blocked {
+				ctx, finalBody, blocked = uc.runPostResponseHook(ctx, tenantID, finalBody)
+			}
 		}
 
 		for k, vv := range resp.Header {
@@ -979,6 +1029,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		}
 		w.Write(finalBody)
 		respBody = finalBody
+	}
+
+	if respIsStream {
+		ctx = uc.runTerminalPostResponseHook(ctx, tenantID)
 	}
 
 	auditErrMsg := ""
@@ -1152,6 +1206,76 @@ func reasoningTokensFromCtx(ctx context.Context) int {
 	return 0
 }
 
+// hookLabelsCtxKey carries pre_request/post_response extension annotate
+// labels (docs/design/09-extensibility.md "Hook points": "annotate — labels
+// flow to audit/billing") through to writeAuditLog, same side-channel
+// pattern as reasoningTokensCtxKey above.
+type hookLabelsCtxKey struct{}
+
+func withHookLabels(ctx context.Context, labels map[string]string) context.Context {
+	if len(labels) == 0 {
+		return ctx
+	}
+	if existing := hookLabelsFromCtx(ctx); len(existing) > 0 {
+		merged := make(map[string]string, len(existing)+len(labels))
+		for k, v := range existing {
+			merged[k] = v
+		}
+		for k, v := range labels {
+			merged[k] = v
+		}
+		labels = merged
+	}
+	return context.WithValue(ctx, hookLabelsCtxKey{}, labels)
+}
+
+func hookLabelsFromCtx(ctx context.Context) map[string]string {
+	if l, ok := ctx.Value(hookLabelsCtxKey{}).(map[string]string); ok {
+		return l
+	}
+	return nil
+}
+
+// runPostResponseHook mirrors applyOutboundGuardrail's exact (ctx, body,
+// blocked) shape so it composes at the same two call sites, running on the
+// guardrail chain's output — non-streaming responses only, since bytes
+// haven't reached the client yet at either site (docs/design/09-
+// extensibility.md "post_response... non-streaming; streaming gets
+// terminal-event only").
+func (uc *GatewayUseCase) runPostResponseHook(ctx context.Context, tenantID uint, body []byte) (context.Context, []byte, bool) {
+	if uc.hooks == nil {
+		return ctx, body, false
+	}
+	res := uc.hooks.RunSync(ctx, extension.PostResponse, extension.Event{TenantID: tenantID, IR: body})
+	ctx = withHookLabels(ctx, res.Labels)
+	if res.Action == extension.ActionReject {
+		rejected, _ := json.Marshal(map[string]interface{}{
+			"error": map[string]string{"message": res.Reason, "code": "EXTENSION_REJECTED"},
+		})
+		return ctx, rejected, true
+	}
+	if res.Action == extension.ActionMutate && len(res.Patch) > 0 {
+		return ctx, res.Patch, false
+	}
+	return ctx, body, false
+}
+
+// runTerminalPostResponseHook is streaming's "terminal-event only" variant:
+// annotate-only (Labels merge into ctx same as the mutate-capable path), any
+// Patch is ignored with a loud warning — bytes are already on the wire by
+// the time this runs, so mutating them is impossible (the "Streaming commit
+// rule" in backend/CLAUDE.md).
+func (uc *GatewayUseCase) runTerminalPostResponseHook(ctx context.Context, tenantID uint) context.Context {
+	if uc.hooks == nil {
+		return ctx
+	}
+	res := uc.hooks.RunSync(ctx, extension.PostResponse, extension.Event{TenantID: tenantID})
+	if res.Action == extension.ActionMutate && len(res.Patch) > 0 {
+		uc.logger.Warnf("extension: post_response 钩子尝试改写流式响应，已忽略（字节已写出）tenant=%d", tenantID)
+	}
+	return withHookLabels(ctx, res.Labels)
+}
+
 // writeAuditLog 异步写入审计日志
 func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtualKey, actualProviderID uint, modelName string,
 	reqBody, respBody []byte, promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens int,
@@ -1244,6 +1368,18 @@ func (uc *GatewayUseCase) writeAuditLog(ctx context.Context, key *model.AIVirtua
 		piiAction = model.PIIActionBlock
 	}
 	entry.PIIAction = piiAction
+
+	if labels := hookLabelsFromCtx(ctx); len(labels) > 0 {
+		if raw, jerr := json.Marshal(labels); jerr == nil {
+			entry.HookLabels = raw
+		}
+	}
+
+	// on_audit 扩展钩子（docs/design/09-extensibility.md "Event bus"）：审计
+	// 条目在此已完整构建——发布到事件总线，供 webhook/Kafka sink 异步投递。
+	if uc.eventBus != nil {
+		uc.eventBus.Publish("audit", key.TenantID, entry)
+	}
 
 	uc.audit.Enqueue(entry)
 }
@@ -2014,6 +2150,9 @@ func (uc *GatewayUseCase) StartBackgroundWorkers(ctx context.Context) {
 	uc.EnsureTenancyDefaults(ctx)
 	if uc.billing != nil {
 		uc.billing.Start(ctx)
+	}
+	if uc.eventBus != nil {
+		uc.eventBus.Start(ctx)
 	}
 }
 

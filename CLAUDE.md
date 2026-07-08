@@ -61,9 +61,9 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
 | Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
 | Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |
-| MCP gateway (protocol proxy + tool governance) | ✅ | `/ai/mcp/{serverName}` proxies Streamable HTTP tool traffic (batched JSON-RPC, GET/SSE push, POST) behind the same `sk-vk-*` virtual keys as models; per-key `tool_whitelist` + dedicated `QuotaDimToolCall`, D06 guardrail chain on arguments/results, audit reuse, console UI (D09). Generic hook dispatcher/event bus remain a separate P3 item 🔴 |
+| MCP gateway (protocol proxy + tool governance) | ✅ | `/ai/mcp/{serverName}` proxies Streamable HTTP tool traffic (batched JSON-RPC, GET/SSE push, POST) behind the same `sk-vk-*` virtual keys as models; per-key `tool_whitelist` + dedicated `QuotaDimToolCall`, D06 guardrail chain on arguments/results, audit reuse, console UI (D09) |
 | Batch + Files API proxy | ✅ | openai_compatible providers only (Anthropic's separate Message Batches API not translated); passthrough + shadow bookkeeping (`AIProxyFile`/`AIBatchJob`) + deferred usage settlement at OpenAI's published 50% batch discount via a background poller (D09) |
-| Extensibility: hook dispatcher, event bus, plugins | 🔴 | P3 (D09), not yet started |
+| Extensibility: hook dispatcher, event bus, WASM plugins | ✅ | `pre_request`/`post_response` sync hooks (compile-time/webhook/WASM via `wazero`) through `internal/biz/extension.Dispatcher`; `on_audit`/`on_billing` generalized into `internal/biz/eventbus.Bus` with durable log + webhook/Kafka sinks (D09). Console UI for `ai_extensions` and breaker/quota bus events remain 🔴 |
 
 When picking up new work, prefer closing a 🟡 row before starting a 🔴 one, and check the corresponding `docs/design/` document first — most decisions are already made there.
 

@@ -144,6 +144,14 @@ func NewHTTPServer(
 	mgmt.HandleFunc("PUT /ai/gateway/mcp-servers", middleware.RequirePlatformAdmin(gwSvc.UpdateMCPServer))
 	mgmt.HandleFunc("DELETE /ai/gateway/mcp-servers", middleware.RequirePlatformAdmin(gwSvc.DeleteMCPServer))
 
+	// P3: extension registry — webhook/WASM pre_request/post_response hooks
+	// (docs/design/09-extensibility.md "Delivery mechanisms"). Same posture
+	// as MCP servers: global objects, mutation is platform-admin only.
+	mgmt.HandleFunc("POST /ai/gateway/extensions", middleware.RequirePlatformAdmin(gwSvc.CreateExtension))
+	mgmt.HandleFunc("GET /ai/gateway/extensions", gwSvc.ListExtensions)
+	mgmt.HandleFunc("PUT /ai/gateway/extensions", middleware.RequirePlatformAdmin(gwSvc.UpdateExtension))
+	mgmt.HandleFunc("DELETE /ai/gateway/extensions", middleware.RequirePlatformAdmin(gwSvc.DeleteExtension))
+
 	// P1/P2: users, RBAC, admin API keys (docs/design/04-multi-tenancy-and-auth.md)
 	mgmt.HandleFunc("GET /ai/gateway/auth/me", authSvc.Me)
 	mgmt.HandleFunc("GET /ai/gateway/users", authSvc.ListUsers)

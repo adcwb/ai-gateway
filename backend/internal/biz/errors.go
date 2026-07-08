@@ -61,4 +61,9 @@ var (
 	ErrMCPServerNotFound   = kerrors.NotFound("MCP_SERVER_NOT_FOUND", "MCP server not found")
 	ErrMCPServerInvalid    = kerrors.BadRequest("MCP_SERVER_INVALID", "MCP server name and baseUrl are required")
 	ErrMCPServerNameExists = kerrors.BadRequest("MCP_SERVER_NAME_EXISTS", "an MCP server with this name already exists")
+
+	// Extensions / hook dispatcher (docs/design/09-extensibility.md).
+	ErrExtensionNotFound   = kerrors.NotFound("EXTENSION_NOT_FOUND", "extension not found")
+	ErrExtensionInvalid    = kerrors.BadRequest("EXTENSION_INVALID", "extension name, kind, and hooks are required")
+	ErrExtensionNameExists = kerrors.BadRequest("EXTENSION_NAME_EXISTS", "an extension with this name already exists")
 )

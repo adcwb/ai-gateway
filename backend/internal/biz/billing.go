@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
 	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 	"github.com/opscenter/ai-gateway/internal/observability"
@@ -41,7 +42,17 @@ type BillingManager struct {
 	usageQ  chan usageTask
 
 	acctCache sync.Map // tenantID → acctCacheEntry
+
+	// eventBus is optional (docs/design/09-extensibility.md on_billing hook,
+	// generalized into the event bus) — set post-construction, same pattern
+	// as GatewayUseCase.SetEventBus, and for the same reason (avoid a mass
+	// edit of NewBillingManager's existing call sites).
+	eventBus *eventbus.Bus
 }
+
+// SetEventBus wires the on_billing event bus in; nil means applyLedger's
+// publish call is a no-op.
+func (bm *BillingManager) SetEventBus(b *eventbus.Bus) { bm.eventBus = b }
 
 func NewBillingManager(db *gorm.DB, rdb *redis.Client, metrics *observability.Metrics, sysCfg *conf.System, logger log.Logger) *BillingManager {
 	return &BillingManager{
@@ -295,6 +306,7 @@ func (bm *BillingManager) applyLedger(task ledgerTask) {
 	defer cancel()
 
 	var after *model.AIBillingAccount
+	var committed *model.AIBillingLedger
 	err := bm.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var acct model.AIBillingAccount
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&acct, task.accountID).Error; err != nil {
@@ -324,11 +336,18 @@ func (bm *BillingManager) applyLedger(task ledgerTask) {
 		}
 		acct.BalanceMicro = newBalance
 		after = &acct
+		committed = entry
 		return nil
 	})
 	if err != nil {
 		bm.logger.Errorf("billing: ledger 落库失败 acct=%d idem=%s err=%v", task.accountID, task.idemKey, err)
 		return
+	}
+	// on_billing 扩展钩子（docs/design/09-extensibility.md "Event bus"）：
+	// 账本条目已提交——发布到事件总线。committed 为空表示这是一次幂等重放
+	// （dup>0 分支），不是新条目，不应重复发布。
+	if committed != nil && bm.eventBus != nil {
+		bm.eventBus.Publish("billing", after.TenantID, committed)
 	}
 	if after != nil {
 		bm.postBalanceChecks(ctx, after)

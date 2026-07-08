@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
+	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
 	"github.com/opscenter/ai-gateway/internal/data/model"
 )
 
@@ -48,6 +49,40 @@ func seedAccount(t *testing.T, db *gorm.DB, bm *BillingManager, tenantID uint, b
 	acct.GraceHours = 0
 	bm.seedBalance(context.Background(), acct)
 	return acct
+}
+
+// TestApplyLedger_PublishesOnBillingEvent verifies the docs/design/09-
+// extensibility.md on_billing hook — generalized into the event bus — fires
+// exactly once per genuinely new ledger entry (not on an idempotent replay).
+func TestApplyLedger_PublishesOnBillingEvent(t *testing.T) {
+	bm, db := newTestBilling(t)
+	if err := db.AutoMigrate(&model.AIEventLogEntry{}, &model.AIEventCursor{}); err != nil {
+		t.Fatalf("migrate eventbus tables: %v", err)
+	}
+	acct := seedAccount(t, db, bm, 3, 100)
+
+	bus := eventbus.NewBus(db, nil, log.NewStdLogger(testWriter{t}))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	bus.Start(ctx)
+	bm.SetEventBus(bus)
+
+	task := ledgerTask{accountID: acct.ID, entryType: model.LedgerEntryDeduct, amountMicro: -5_000_000, idemKey: "req:onbilling"}
+	bm.applyLedger(task)
+	bm.applyLedger(task) // replay must not publish a second event
+
+	deadline := time.Now().Add(2 * time.Second)
+	var count int64
+	for time.Now().Before(deadline) {
+		db.Model(&model.AIEventLogEntry{}).Where("event_type = ?", "billing").Count(&count)
+		if count > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 on_billing event logged (replay must not re-publish), got %d", count)
+	}
 }
 
 func TestLedgerIdempotency(t *testing.T) {

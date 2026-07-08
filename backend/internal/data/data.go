@@ -91,6 +91,9 @@ func autoMigrate(db *gorm.DB) error {
 		&model.AIMCPServer{},
 		&model.AIProxyFile{},
 		&model.AIBatchJob{},
+		&model.AIExtension{},
+		&model.AIEventLogEntry{},
+		&model.AIEventCursor{},
 	)
 }
 

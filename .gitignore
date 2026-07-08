@@ -2,6 +2,8 @@
 backend/server
 backend/server.exe
 backend/coverage.out
+examples/extensions/webhook-logger/webhook-logger
+examples/extensions/webhook-logger/webhook-logger.exe
 frontend/dist/
 frontend/node_modules/
 frontend/test-results/

@@ -3,6 +3,7 @@ package conf
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type Bootstrap struct {
 	Observability *Observability `yaml:"observability"`
 	Auth          *Auth          `yaml:"auth"`
 	Audit         *Audit         `yaml:"audit"`
+	Extensions    *Extensions    `yaml:"extensions"`
 }
 
 type Server struct {
@@ -104,6 +106,22 @@ type Audit struct {
 	EncryptBodies bool `yaml:"encrypt_bodies"`
 }
 
+// Extensions configures the event bus's infra-level sinks (docs/design/09-
+// extensibility.md "Event bus"). Everything else extensibility-related
+// (ai_extensions rows: webhook/WASM hooks, their timeouts/fail-mode) is
+// DB/admin-API-driven, like ai_mcp_servers — these are the two settings that
+// genuinely can't live in a DB row because they're needed to reach outside
+// the process at all.
+type Extensions struct {
+	// KafkaBrokers, if non-empty, enables the Kafka sink (topic per event
+	// type: "audit"/"billing"). Empty = Kafka sink disabled, zero overhead.
+	KafkaBrokers []string `yaml:"kafka_brokers"`
+	// EventWebhookURL/Secret, if set, enables a webhook sink for on_audit/
+	// on_billing events (batched, HMAC-signed). Empty URL = disabled.
+	EventWebhookURL    string `yaml:"event_webhook_url"`
+	EventWebhookSecret string `yaml:"event_webhook_secret"`
+}
+
 // ApplyEnvOverrides maps AIGW_* environment variables onto config fields so
 // secrets never need to live in the YAML file (compose / k8s ergonomics).
 func (bc *Bootstrap) ApplyEnvOverrides() {
@@ -163,6 +181,15 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	if v := os.Getenv("AIGW_AUDIT_ENCRYPT_BODIES"); v != "" {
 		bc.ensureAudit().EncryptBodies = v == "true" || v == "1"
 	}
+	if v := os.Getenv("AIGW_KAFKA_BROKERS"); v != "" {
+		bc.ensureExtensions().KafkaBrokers = strings.Split(v, ",")
+	}
+	if v := os.Getenv("AIGW_EVENT_WEBHOOK_URL"); v != "" {
+		bc.ensureExtensions().EventWebhookURL = v
+	}
+	if v := os.Getenv("AIGW_EVENT_WEBHOOK_SECRET"); v != "" {
+		bc.ensureExtensions().EventWebhookSecret = v
+	}
 }
 
 func (bc *Bootstrap) ensureServer() *Server {
@@ -218,4 +245,11 @@ func (bc *Bootstrap) ensureAudit() *Audit {
 		bc.Audit = &Audit{}
 	}
 	return bc.Audit
+}
+
+func (bc *Bootstrap) ensureExtensions() *Extensions {
+	if bc.Extensions == nil {
+		bc.Extensions = &Extensions{}
+	}
+	return bc.Extensions
 }

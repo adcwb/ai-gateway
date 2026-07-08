@@ -45,6 +45,15 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 	gatewayUseCase := biz.NewGatewayUseCase(db, rdb, quotaManager, auditWorker, routerManager, billingManager, metrics, bc.AI, bc.System, logger)
 	authUseCase := biz.NewAuthUseCase(db, bc.Auth, bc.System, logger)
 
+	// Extensibility (docs/design/09-extensibility.md): both optional, wired
+	// post-construction via setters rather than constructor params (see
+	// GatewayUseCase.SetHookDispatcher's doc comment for why).
+	extensionDispatcher := biz.NewExtensionDispatcher(db, bc.System, logger)
+	eventBus := biz.NewEventBus(db, bc.Extensions, logger)
+	gatewayUseCase.SetHookDispatcher(extensionDispatcher)
+	gatewayUseCase.SetEventBus(eventBus)
+	billingManager.SetEventBus(eventBus)
+
 	gatewayService := service.NewGatewayService(gatewayUseCase, billingManager)
 	authService := service.NewAuthService(authUseCase)
 
