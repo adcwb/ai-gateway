@@ -157,6 +157,7 @@ const dict: Record<string, { en: string; zh: string }> = {
   modelTypeImage: { en: "Image generation", zh: "图像生成" },
   modelTypeTTS: { en: "Audio (TTS)", zh: "语音合成 (TTS)" },
   modelTypeASR: { en: "Audio (ASR)", zh: "语音识别 (ASR)" },
+  modelTypeVideo: { en: "Video generation", zh: "视频生成" },
   contextWindow: { en: "Context window", zh: "上下文窗口" },
   inputPrice: { en: "Input $/M", zh: "输入价 /M" },
   outputPrice: { en: "Output $/M", zh: "输出价 /M" },

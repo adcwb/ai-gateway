@@ -36,7 +36,7 @@ func newTestGatewayForMedia(t *testing.T) (*GatewayUseCase, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(
 		&model.AIProvider{}, &model.AIModelItem{}, &model.AIModelMapping{},
-		&model.AIVirtualKey{}, &model.AIPIIPolicy{}, &model.AITenant{},
+		&model.AIVirtualKey{}, &model.AIPIIPolicy{}, &model.AITenant{}, &model.AIVideoJob{},
 		&model.AIGatewayAuditLog{}, &model.AIGatewayAuditLogBody{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -68,7 +68,7 @@ func newTestGatewayForMediaWithQuota(t *testing.T) (*GatewayUseCase, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(
 		&model.AIProvider{}, &model.AIModelItem{}, &model.AIModelMapping{},
-		&model.AIVirtualKey{}, &model.AIPIIPolicy{}, &model.AITenant{},
+		&model.AIVirtualKey{}, &model.AIPIIPolicy{}, &model.AITenant{}, &model.AIVideoJob{},
 		&model.AIGatewayAuditLog{}, &model.AIGatewayAuditLogBody{}, &model.AIGatewayQuotaEvent{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)

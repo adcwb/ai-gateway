@@ -86,4 +86,9 @@ var (
 	ErrMediaProviderUnsupported = kerrors.BadRequest("MEDIA_PROVIDER_UNSUPPORTED", "resolved provider does not support this media endpoint in this gateway version")
 	ErrImageCallQuotaExceeded   = kerrors.New(429, "IMAGE_CALL_QUOTA_EXCEEDED", "hourly image call quota exceeded")
 	ErrAudioCallQuotaExceeded   = kerrors.New(429, "AUDIO_CALL_QUOTA_EXCEEDED", "hourly audio call quota exceeded")
+
+	// Video generation, phase 2 (docs/superpowers/specs/2026-07-09-video-
+	// generation-phase2-design.md).
+	ErrVideoJobNotFound       = kerrors.NotFound("VIDEO_JOB_NOT_FOUND", "video job not found")
+	ErrVideoCallQuotaExceeded = kerrors.New(429, "VIDEO_CALL_QUOTA_EXCEEDED", "hourly video call quota exceeded")
 )

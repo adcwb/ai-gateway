@@ -12,6 +12,7 @@ const (
 	QuotaDimToolCall    = "tool_call"
 	QuotaDimImageCall   = "image_call"
 	QuotaDimAudioCall   = "audio_call"
+	QuotaDimVideoCall   = "video_call"
 )
 
 const (

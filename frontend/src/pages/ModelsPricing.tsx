@@ -24,17 +24,19 @@ const emptyModelForm = {
   cacheWritePricePerMillion: 0,
 };
 
-// Phase 1 multimodal media adapters (docs/superpowers/specs/2026-07-09-
-// multimodal-media-adapters-design.md): "image"/"tts"/"asr" are the modality
-// values media_proxy.go's resolveMediaModel filters candidates by; "llm" is
-// the pre-existing default. Console-only addition — the backend never
-// validated modelType against a whitelist.
-const modelTypeOptions = ["llm", "image", "tts", "asr"] as const;
-const modelTypeLabelKey: Record<string, "modelTypeLLM" | "modelTypeImage" | "modelTypeTTS" | "modelTypeASR"> = {
+// Multimodal media adapters, phases 1-2 (docs/superpowers/specs/2026-07-09-
+// multimodal-media-adapters-design.md, 2026-07-09-video-generation-phase2-
+// design.md): "image"/"tts"/"asr"/"video" are the modality values
+// resolveMediaModel filters candidates by; "llm" is the pre-existing
+// default. Console-only addition — the backend never validated modelType
+// against a whitelist.
+const modelTypeOptions = ["llm", "image", "tts", "asr", "video"] as const;
+const modelTypeLabelKey: Record<string, "modelTypeLLM" | "modelTypeImage" | "modelTypeTTS" | "modelTypeASR" | "modelTypeVideo"> = {
   llm: "modelTypeLLM",
   image: "modelTypeImage",
   tts: "modelTypeTTS",
   asr: "modelTypeASR",
+  video: "modelTypeVideo",
 };
 
 const emptyTableForm = { id: 0, name: "", currency: "CNY" };

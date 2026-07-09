@@ -17,6 +17,7 @@ const (
 	ModelTypeImage = "image"
 	ModelTypeTTS   = "tts"
 	ModelTypeASR   = "asr"
+	ModelTypeVideo = "video"
 )
 
 type AIModelItem struct {

@@ -75,6 +75,12 @@ type AIVirtualKey struct {
 	HourlyImageCallQuota int64 `gorm:"column:hourly_image_call_quota;default:0" json:"hourlyImageCallQuota"`
 	HourlyAudioCallQuota int64 `gorm:"column:hourly_audio_call_quota;default:0" json:"hourlyAudioCallQuota"`
 
+	// HourlyVideoCallQuota (phase 2, docs/superpowers/specs/2026-07-09-video-
+	// generation-phase2-design.md) is consumed only on job submission
+	// (POST /ai/v1/videos) — polling status, downloading content, and
+	// deleting a job never touch it. 0 = unlimited, same convention.
+	HourlyVideoCallQuota int64 `gorm:"column:hourly_video_call_quota;default:0" json:"hourlyVideoCallQuota"`
+
 	ModelQuotas []AIVirtualKeyModelQuota `gorm:"-" json:"modelQuotas,omitempty"`
 }
 

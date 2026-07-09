@@ -181,6 +181,10 @@ func hourlyAudioCallKey(keyID uint) string {
 	return fmt.Sprintf("ai:gw:rl:audiocalls:%d", keyID)
 }
 
+func hourlyVideoCallKey(keyID uint) string {
+	return fmt.Sprintf("ai:gw:rl:videocalls:%d", keyID)
+}
+
 // CheckAndReserve checks quota and reserves concurrency slot before a request.
 func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtualKey) (requestID string, err error) {
 	rdb := q.rdb
@@ -413,6 +417,32 @@ func (q *QuotaManager) CheckAndReserveAudioCall(ctx context.Context, key *model.
 	if n < 0 {
 		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimAudioCall, key.HourlyAudioCallQuota, key.HourlyAudioCallQuota, "")
 		return fmt.Errorf("每小时音频调用次数已达上限 (%d)", key.HourlyAudioCallQuota)
+	}
+	return nil
+}
+
+// CheckAndReserveVideoCall enforces a key's dedicated video-generation
+// submission budget (QuotaDimVideoCall) — consumed only on job creation
+// (POST /ai/v1/videos), never on status polling, content download, or
+// delete. Independent of HourlyReqQuota/HourlyImageCallQuota/
+// HourlyAudioCallQuota. A zero quota means unlimited.
+func (q *QuotaManager) CheckAndReserveVideoCall(ctx context.Context, key *model.AIVirtualKey) error {
+	if key.HourlyVideoCallQuota <= 0 {
+		return nil
+	}
+	rdb := q.rdb
+	now := time.Now()
+	windowSecs := int64(slidingWindowDuration / time.Second)
+	bucketSecs := int64(slidingWindowBucket / time.Second)
+
+	n, scriptErr := rollingCheckAddScript.Run(ctx, rdb, []string{hourlyVideoCallKey(key.ID)},
+		now.Unix(), windowSecs, bucketSecs, key.HourlyVideoCallQuota, 1).Int64()
+	if scriptErr != nil {
+		return fmt.Errorf("redis error: %w", scriptErr)
+	}
+	if n < 0 {
+		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimVideoCall, key.HourlyVideoCallQuota, key.HourlyVideoCallQuota, "")
+		return fmt.Errorf("每小时视频生成调用次数已达上限 (%d)", key.HourlyVideoCallQuota)
 	}
 	return nil
 }

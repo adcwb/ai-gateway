@@ -218,6 +218,16 @@ func NewHTTPServer(
 	mux.Handle("POST /ai/v1/audio/speech", tracing.Middleware("openai-audio", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.AudioSpeech))))
 	mux.Handle("POST /ai/v1/audio/transcriptions", tracing.Middleware("openai-audio", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.AudioTranscriptions))))
 
+	// Video generation, phase 2 (docs/superpowers/specs/2026-07-09-video-
+	// generation-phase2-design.md): async submit/poll/download, openai_compatible
+	// providers only, no billing/settlement poller (see Files/Batches above for
+	// the analogous — but billed and header-selected — pattern).
+	mux.Handle("POST /ai/v1/videos", tracing.Middleware("openai-videos", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.VideosCreate))))
+	mux.Handle("GET /ai/v1/videos", tracing.Middleware("openai-videos", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.VideosList))))
+	mux.Handle("GET /ai/v1/videos/{id}", tracing.Middleware("openai-videos", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.VideosGet))))
+	mux.Handle("GET /ai/v1/videos/{id}/content", tracing.Middleware("openai-videos", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.VideosContent))))
+	mux.Handle("DELETE /ai/v1/videos/{id}", tracing.Middleware("openai-videos", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.VideosDelete))))
+
 	mux.Handle("/ai/v1/", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest))))
 
 	// Anthropic Messages API inbound codec (docs/design/02-protocol-adapters.md):
