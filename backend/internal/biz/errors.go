@@ -75,6 +75,13 @@ var (
 	ErrModelMappingInvalid  = kerrors.BadRequest("MODEL_MAPPING_INVALID", "virtualKeyId, virtualModel, and realModelId are required")
 	ErrModelMappingExists   = kerrors.BadRequest("MODEL_MAPPING_EXISTS", "this key already has a mapping for that virtual model name")
 
+	// Model mapping modality validation, phase 3 of the multimodal media
+	// adapters project (docs/superpowers/specs/2026-07-09-model-mapping-
+	// modality-validation-phase3-design.md). Only enforced for non-llm
+	// (image/tts/asr/video) mappings — chat/llm mappings never required
+	// AIModelItem cataloging and this must not restrict that behavior.
+	ErrModelMappingModalityMismatch = kerrors.BadRequest("MODEL_MAPPING_MODALITY_MISMATCH", "fallback chain entry does not match the mapping's model type")
+
 	// PII/guardrail policies (docs/design/06-security-and-guardrails.md).
 	ErrPIIPolicyNotFound = kerrors.NotFound("PII_POLICY_NOT_FOUND", "policy not found")
 	ErrPIIPolicyInvalid  = kerrors.BadRequest("PII_POLICY_INVALID", "name and action are required")

@@ -499,7 +499,7 @@ export interface ModelMapping {
   virtualKeyId: number;
   virtualModel: string;
   realModelId: number;
-  realModel?: { id: number; name: string } | null;
+  realModel?: { id: number; name: string; modelType?: string } | null;
   isEnabled: boolean;
   description: string;
   fallbackChain?: FallbackChainEntry[] | null;

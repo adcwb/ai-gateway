@@ -2,11 +2,15 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"github.com/opscenter/ai-gateway/internal/biz/dto"
 	"github.com/opscenter/ai-gateway/internal/data/model"
@@ -20,10 +24,58 @@ import (
 // attempted here — consistent with this package's existing documented RBAC
 // gap on broad tenant-scoped filtering).
 
+// validateMappingModality loads realModelID's catalog row (rejecting an
+// unresolvable id, previously unchecked) and, only when that model's
+// ModelType isn't the "llm" default, verifies every fallback-chain entry
+// resolves to a cataloged, enabled AIModelItem of the identical ModelType.
+// llm mappings are exempt: AIModelItem cataloging was never mandatory for
+// chat routing (mappingFallbackCandidates/the router's provider pool read
+// AIProvider.Models, not AIModelItem) — this must not retroactively
+// restrict that existing, working behavior.
+func (uc *GatewayUseCase) validateMappingModality(ctx context.Context, realModelID uint, fallbackChain datatypes.JSON) error {
+	var realItem model.AIModelItem
+	if err := uc.db.WithContext(ctx).First(&realItem, realModelID).Error; err != nil {
+		return ErrModelItemNotFound
+	}
+	if realItem.ModelType == "" || realItem.ModelType == model.ModelTypeLLM {
+		return nil
+	}
+	if len(fallbackChain) == 0 {
+		return nil
+	}
+	var chain []struct {
+		ProviderID uint   `json:"providerId"`
+		Model      string `json:"model"`
+	}
+	if err := json.Unmarshal(fallbackChain, &chain); err != nil {
+		return nil // malformed chain JSON is a pre-existing, separately-handled concern
+	}
+	for _, c := range chain {
+		if c.ProviderID == 0 || c.Model == "" {
+			continue
+		}
+		var item model.AIModelItem
+		if err := uc.db.WithContext(ctx).
+			Where("provider_id = ? AND name = ? AND is_enabled = ?", c.ProviderID, c.Model, true).
+			First(&item).Error; err != nil {
+			return kerrors.BadRequest("MODEL_MAPPING_MODALITY_MISMATCH",
+				fmt.Sprintf("fallback entry {providerId:%d, model:%q} is not a cataloged, enabled model (expected type %q)", c.ProviderID, c.Model, realItem.ModelType))
+		}
+		if item.ModelType != realItem.ModelType {
+			return kerrors.BadRequest("MODEL_MAPPING_MODALITY_MISMATCH",
+				fmt.Sprintf("fallback entry {providerId:%d, model:%q} is type %q, expected %q", c.ProviderID, c.Model, item.ModelType, realItem.ModelType))
+		}
+	}
+	return nil
+}
+
 func (uc *GatewayUseCase) CreateModelMapping(ctx context.Context, req *dto.CreateModelMappingReq) (*model.AIModelMapping, error) {
 	virtualModel := strings.TrimSpace(req.VirtualModel)
 	if req.VirtualKeyID == 0 || virtualModel == "" || req.RealModelID == 0 {
 		return nil, ErrModelMappingInvalid
+	}
+	if err := uc.validateMappingModality(ctx, req.RealModelID, datatypes.JSON(req.FallbackChain)); err != nil {
+		return nil, err
 	}
 	m := &model.AIModelMapping{
 		VirtualKeyID:  req.VirtualKeyID,
@@ -59,6 +111,20 @@ func (uc *GatewayUseCase) UpdateModelMapping(ctx context.Context, req *dto.Updat
 		}
 		return nil, err
 	}
+	if req.RealModelID != nil || len(req.FallbackChain) > 0 {
+		effectiveRealModelID := m.RealModelID
+		if req.RealModelID != nil {
+			effectiveRealModelID = *req.RealModelID
+		}
+		effectiveFallbackChain := m.FallbackChain
+		if len(req.FallbackChain) > 0 {
+			effectiveFallbackChain = datatypes.JSON(req.FallbackChain)
+		}
+		if err := uc.validateMappingModality(ctx, effectiveRealModelID, effectiveFallbackChain); err != nil {
+			return nil, err
+		}
+	}
+
 	updates := map[string]interface{}{}
 	if req.VirtualModel != nil {
 		updates["virtual_model"] = strings.TrimSpace(*req.VirtualModel)

@@ -37,6 +37,21 @@ const emptyForm = {
   isEnabled: true,
 };
 
+// Modality filter for the "真实模型" picker (phase 3, docs/superpowers/specs/
+// 2026-07-09-model-mapping-modality-validation-phase3-design.md). Client-side
+// only — never sent to the backend, never stored on the mapping itself;
+// modality is always derived from the selected real model's own modelType.
+// Duplicated from ModelsPricing.tsx's identical 5-entry array rather than
+// shared across pages — it's a constant, not logic.
+const modelTypeOptions = ["llm", "image", "tts", "asr", "video"] as const;
+const modelTypeLabelKey: Record<string, "modelTypeLLM" | "modelTypeImage" | "modelTypeTTS" | "modelTypeASR" | "modelTypeVideo"> = {
+  llm: "modelTypeLLM",
+  image: "modelTypeImage",
+  tts: "modelTypeTTS",
+  asr: "modelTypeASR",
+  video: "modelTypeVideo",
+};
+
 function FallbackRow({
   entry,
   index,
@@ -90,6 +105,7 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [chain, setChain] = useState<FallbackChainEntry[]>([]);
+  const [modalityFilter, setModalityFilter] = useState<string>("llm");
   const [actionError, setActionError] = useState("");
 
   const keysQ = useAsync<VirtualKey[]>(
@@ -137,11 +153,20 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
         isEnabled: m.isEnabled,
       });
       setChain(m.fallbackChain ?? []);
+      const currentType = m.realModel?.modelType ?? models.find((x) => x.id === m.realModelId)?.modelType;
+      setModalityFilter(currentType || "llm");
     } else {
-      setForm({ ...emptyForm, realModelId: models[0]?.id || 0 });
+      setModalityFilter("llm");
+      setForm({ ...emptyForm, realModelId: models.find((x) => (x.modelType || "llm") === "llm")?.id || 0 });
       setChain([]);
     }
     setShowForm(true);
+  };
+
+  const changeModalityFilter = (next: string) => {
+    setModalityFilter(next);
+    const stillMatches = models.some((x) => x.id === form.realModelId && (x.modelType || "llm") === next);
+    if (!stillMatches) setForm((f) => ({ ...f, realModelId: 0 }));
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -254,6 +279,12 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
               />
             </label>
             <label className="field">
+              <div className="field-label">{t("modelType", lang)}</div>
+              <select value={modalityFilter} onChange={(e) => changeModalityFilter(e.target.value)}>
+                {modelTypeOptions.map((mt) => <option key={mt} value={mt}>{t(modelTypeLabelKey[mt], lang)}</option>)}
+              </select>
+            </label>
+            <label className="field">
               <div className="field-label">{t("realModel", lang)}</div>
               <select
                 value={form.realModelId}
@@ -261,11 +292,13 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                 required
               >
                 <option value={0}>—</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({providerNameById.get(m.providerId) ?? `#${m.providerId}`})
-                  </option>
-                ))}
+                {models
+                  .filter((m) => (m.modelType || "llm") === modalityFilter)
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({providerNameById.get(m.providerId) ?? `#${m.providerId}`})
+                    </option>
+                  ))}
               </select>
             </label>
             <label className="field span-2">
