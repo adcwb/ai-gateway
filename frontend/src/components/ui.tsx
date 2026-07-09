@@ -1,6 +1,7 @@
 // Shared UI primitives for the console: inline-SVG icons (no emoji, no deps),
 // plus loading/empty/error building blocks used across every page.
-import { useId } from "react";
+import { useEffect, useId } from "react";
+import { createPortal } from "react-dom";
 import type React from "react";
 
 export type IconName =
@@ -115,6 +116,82 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: (
         <button className="ghost sm retry" onClick={onRetry}>
           <Icon name="refresh" size={13} /> Retry
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Centered overlay dialog, portaled to document.body so table/card overflow
+ *  never clips it. Backdrop click and Escape both close it. */
+export function Modal({
+  title,
+  onClose,
+  children,
+  width = 640,
+  closeLabel = "Close",
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number;
+  closeLabel?: string;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="modal-overlay"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="modal" style={{ maxWidth: width }} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button className="ghost sm" onClick={onClose} aria-label={closeLabel} title={closeLabel}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Usage-vs-quota bar. A quota of 0 means unlimited (per the backend's
+ *  existing convention, e.g. hourlyToolCallQuota) — rendered as a bare
+ *  value with no fill rather than a misleading 0% bar. */
+export function Gauge({
+  label,
+  used,
+  quota,
+  unlimitedLabel = "unlimited",
+}: {
+  label: string;
+  used: number;
+  quota: number;
+  unlimitedLabel?: string;
+}) {
+  const unlimited = quota <= 0;
+  const pct = unlimited ? 0 : Math.min(100, (used / quota) * 100);
+  const tone = pct >= 100 ? "err" : pct >= 80 ? "warn" : "";
+  return (
+    <div className="gauge">
+      <div className="gauge-head">
+        <span className="gauge-label">{label}</span>
+        <span className="gauge-value">{unlimited ? `${used} / ${unlimitedLabel}` : `${used} / ${quota}`}</span>
+      </div>
+      {!unlimited && (
+        <div className="gauge-track">
+          <div className={`gauge-fill ${tone}`} style={{ width: `${pct}%` }} />
+        </div>
       )}
     </div>
   );

@@ -269,6 +269,29 @@ const dict: Record<string, { en: string; zh: string }> = {
   cacheBillingPolicy: { en: "Cache-hit billing", zh: "缓存命中计费" },
   cacheDiscountPercent: { en: "Discount % on cache hit", zh: "命中折扣（%）" },
 
+  // ---- Keys: quota editor modal ----------------------------------------------
+  quotas: { en: "Quotas", zh: "配额" },
+  quotaUsage: { en: "Current usage", zh: "当前用量" },
+  globalQuotas: { en: "Global quotas", zh: "全局配额" },
+  perModelQuotas: { en: "Per-model overrides", zh: "按模型配额覆盖" },
+  perModelQuotasHint: {
+    en: "Overrides the global quotas above for a specific model. Leave a field at 0 to use no limit for that dimension.",
+    zh: "针对特定模型覆盖上方的全局配额。字段留 0 表示该维度不限。",
+  },
+  modelName: { en: "Model", zh: "模型" },
+  concurrency: { en: "Concurrency", zh: "并发数" },
+  unlimited: { en: "unlimited", zh: "不限" },
+  addModelQuota: { en: "Add model override", zh: "新增模型覆盖" },
+  removeRow: { en: "Remove", zh: "移除" },
+  saveQuotas: { en: "Save quotas", zh: "保存配额" },
+  loadQuotasFailed: { en: "Failed to load quotas", zh: "配额加载失败" },
+  dailyTokenQuota: { en: "Daily tokens (0 = unlimited)", zh: "日 Token（0 = 不限）" },
+  hourlyTokenQuota: { en: "Hourly tokens (0 = unlimited)", zh: "时 Token（0 = 不限）" },
+  hourlyReqQuota: { en: "Hourly requests (0 = unlimited)", zh: "时请求数（0 = 不限）" },
+  maxConcurrency: { en: "Max concurrency (0 = unlimited)", zh: "最大并发（0 = 不限）" },
+  dailyPointQuota: { en: "Daily points (0 = unlimited)", zh: "日积分（0 = 不限）" },
+  hourlyPointQuota: { en: "Hourly points (0 = unlimited)", zh: "时积分（0 = 不限）" },
+
   // ---- Settings: semantic cache embedding -------------------------------------
   semanticCacheEmbedding: { en: "Semantic cache embedding", zh: "语义缓存向量模型" },
   semanticCacheEmbeddingHint: {

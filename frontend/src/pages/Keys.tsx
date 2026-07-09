@@ -4,14 +4,17 @@ import {
   useAsync,
   type CacheConfig,
   type CreateKeyResp,
+  type KeyQuotaUsage,
   type PageResp,
   type PIIPolicy,
   type Provider,
+  type QuotaConfig,
+  type QuotaConfigItem,
   type Tenant,
   type VirtualKey,
 } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { EmptyState, ErrorBanner, Gauge, Icon, Modal, Skeleton, TableSkeleton } from "../components/ui";
 
 export default function Keys({ lang }: { lang: Lang }) {
   const [showForm, setShowForm] = useState(false);
@@ -19,6 +22,7 @@ export default function Keys({ lang }: { lang: Lang }) {
   const [copied, setCopied] = useState(false);
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [actionError, setActionError] = useState("");
+  const [quotaKeyId, setQuotaKeyId] = useState<number | null>(null);
   const [form, setForm] = useState({
     name: "",
     providerId: 0,
@@ -55,13 +59,18 @@ export default function Keys({ lang }: { lang: Lang }) {
   const piiPolicies = data?.[3] ?? [];
 
   // Seed the create-form's provider/tenant defaults once the lists arrive.
+  // Keyed on `data` itself (stable while null/unchanged), not the derived
+  // `providers`/`tenants` fallbacks — `data?.[n] ?? []` allocates a new array
+  // every render while data is null, which would re-trigger this effect
+  // (and its setForm) in an infinite loop for as long as the fetch fails.
   useEffect(() => {
     setForm((f) => ({
       ...f,
       providerId: f.providerId || providers[0]?.id || 0,
       tenantId: f.tenantId || tenants[0]?.id || 0,
     }));
-  }, [providers, tenants]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -361,6 +370,9 @@ export default function Keys({ lang }: { lang: Lang }) {
                       <button className="ghost sm" onClick={() => toggle(k)}>
                         {t(k.isEnabled ? "disable" : "enable", lang)}
                       </button>
+                      <button className="ghost sm" onClick={() => setQuotaKeyId(k.id)}>
+                        <Icon name="dashboard" size={13} /> {t("quotas", lang)}
+                      </button>
                       <button className="ghost sm" onClick={() => reveal(k)}>
                         <Icon name="eye" size={13} /> {t("reveal", lang)}
                       </button>
@@ -375,6 +387,192 @@ export default function Keys({ lang }: { lang: Lang }) {
           </tbody>
         </table>
       </div>
+
+      {quotaKeyId != null && (
+        <QuotaModal keyId={quotaKeyId} lang={lang} onClose={() => setQuotaKeyId(null)} />
+      )}
     </div>
+  );
+}
+
+const emptyModelQuota: QuotaConfigItem = {
+  modelName: "",
+  dailyTokenQuota: 0,
+  hourlyTokenQuota: 0,
+  hourlyReqQuota: 0,
+  dailyPointQuota: 0,
+  hourlyPointQuota: 0,
+  dailyTokenUsed: 0,
+  hourlyTokenUsed: 0,
+  hourlyReqUsed: 0,
+  dailyPointUsed: 0,
+  hourlyPointUsed: 0,
+};
+
+type GlobalQuotaField =
+  | "dailyTokenQuota" | "hourlyTokenQuota" | "hourlyReqQuota"
+  | "maxConcurrency" | "dailyPointQuota" | "hourlyPointQuota";
+type ModelQuotaField =
+  | "dailyTokenQuota" | "hourlyTokenQuota" | "hourlyReqQuota"
+  | "dailyPointQuota" | "hourlyPointQuota";
+
+function QuotaModal({ keyId, lang, onClose }: { keyId: number; lang: Lang; onClose: () => void }) {
+  const [config, setConfig] = useState<QuotaConfig | null>(null);
+  const [usage, setUsage] = useState<KeyQuotaUsage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    setLoadError("");
+    Promise.all([
+      api.get<QuotaConfig>(`/ai/gateway/key/quota-config?keyId=${keyId}`),
+      api.get<KeyQuotaUsage>(`/ai/gateway/key/quota-usage?keyId=${keyId}`),
+    ])
+      .then(([c, u]) => {
+        setConfig(c);
+        setUsage(u);
+      })
+      .catch((e) => setLoadError((e as Error).message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [keyId]);
+
+  const updateField = (key: GlobalQuotaField, value: number) => {
+    setConfig((c) => (c ? { ...c, [key]: value } : c));
+  };
+
+  const updateModelQuota = (idx: number, patch: Partial<QuotaConfigItem>) => {
+    setConfig((c) => {
+      if (!c) return c;
+      const modelQuotas = c.modelQuotas.slice();
+      modelQuotas[idx] = { ...modelQuotas[idx], ...patch };
+      return { ...c, modelQuotas };
+    });
+  };
+
+  const addModelQuota = () => {
+    setConfig((c) => (c ? { ...c, modelQuotas: [...c.modelQuotas, { ...emptyModelQuota }] } : c));
+  };
+
+  const removeModelQuota = (idx: number) => {
+    setConfig((c) => (c ? { ...c, modelQuotas: c.modelQuotas.filter((_, i) => i !== idx) } : c));
+  };
+
+  const save = async () => {
+    if (!config) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await api.put("/ai/gateway/key/quota-config", {
+        keyId: config.keyId,
+        dailyTokenQuota: config.dailyTokenQuota,
+        hourlyTokenQuota: config.hourlyTokenQuota,
+        hourlyReqQuota: config.hourlyReqQuota,
+        maxConcurrency: config.maxConcurrency,
+        dailyPointQuota: config.dailyPointQuota,
+        hourlyPointQuota: config.hourlyPointQuota,
+        modelQuotas: config.modelQuotas.filter((m) => m.modelName.trim()),
+      });
+      onClose();
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const numField = (labelKey: string, key: GlobalQuotaField, value: number) => (
+    <label className="field" key={key}>
+      <div className="field-label">{t(labelKey, lang)}</div>
+      <input
+        type="number"
+        min="0"
+        value={value || ""}
+        onChange={(e) => updateField(key, Number(e.target.value) || 0)}
+      />
+    </label>
+  );
+
+  const modelNumField = (labelKey: string, key: ModelQuotaField, idx: number, value: number) => (
+    <label className="field" key={key}>
+      <div className="field-label">{t(labelKey, lang)}</div>
+      <input
+        type="number"
+        min="0"
+        value={value || ""}
+        onChange={(e) => updateModelQuota(idx, { [key]: Number(e.target.value) || 0 })}
+      />
+    </label>
+  );
+
+  return (
+    <Modal title={t("quotas", lang)} onClose={onClose} closeLabel={t("close", lang)} width={760}>
+      {loading ? (
+        <div className="flex" style={{ flexDirection: "column", gap: 10 }}>
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} w="100%" h={14} />)}
+        </div>
+      ) : loadError ? (
+        <ErrorBanner message={`${t("loadQuotasFailed", lang)}: ${loadError}`} onRetry={load} />
+      ) : config && usage ? (
+        <>
+          <h1 className="section-title" style={{ marginTop: 0 }}>{t("quotaUsage", lang)}</h1>
+          <Gauge label={t("dailyTokenQuota", lang)} used={usage.dailyTokenUsed} quota={usage.dailyTokenQuota} unlimitedLabel={t("unlimited", lang)} />
+          <Gauge label={t("hourlyTokenQuota", lang)} used={usage.hourlyTokenUsed} quota={usage.hourlyTokenQuota} unlimitedLabel={t("unlimited", lang)} />
+          <Gauge label={t("hourlyReqQuota", lang)} used={usage.hourlyReqUsed} quota={usage.hourlyReqQuota} unlimitedLabel={t("unlimited", lang)} />
+          <Gauge label={t("concurrency", lang)} used={usage.currentConcurrency} quota={usage.maxConcurrency} unlimitedLabel={t("unlimited", lang)} />
+          <Gauge label={t("dailyPointQuota", lang)} used={usage.dailyPointUsed} quota={usage.dailyPointQuota} unlimitedLabel={t("unlimited", lang)} />
+          <Gauge label={t("hourlyPointQuota", lang)} used={usage.hourlyPointUsed} quota={usage.hourlyPointQuota} unlimitedLabel={t("unlimited", lang)} />
+
+          <h1 className="section-title">{t("globalQuotas", lang)}</h1>
+          <div className="form-grid">
+            {numField("dailyTokenQuota", "dailyTokenQuota", config.dailyTokenQuota)}
+            {numField("hourlyTokenQuota", "hourlyTokenQuota", config.hourlyTokenQuota)}
+            {numField("hourlyReqQuota", "hourlyReqQuota", config.hourlyReqQuota)}
+            {numField("maxConcurrency", "maxConcurrency", config.maxConcurrency)}
+            {numField("dailyPointQuota", "dailyPointQuota", config.dailyPointQuota)}
+            {numField("hourlyPointQuota", "hourlyPointQuota", config.hourlyPointQuota)}
+          </div>
+
+          <h1 className="section-title">{t("perModelQuotas", lang)}</h1>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>{t("perModelQuotasHint", lang)}</div>
+          {config.modelQuotas.map((m, idx) => (
+            <div
+              className="form-grid"
+              key={idx}
+              style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}
+            >
+              <label className="field">
+                <div className="field-label">{t("modelName", lang)}</div>
+                <input value={m.modelName} onChange={(e) => updateModelQuota(idx, { modelName: e.target.value })} />
+              </label>
+              {modelNumField("dailyTokenQuota", "dailyTokenQuota", idx, m.dailyTokenQuota)}
+              {modelNumField("hourlyTokenQuota", "hourlyTokenQuota", idx, m.hourlyTokenQuota)}
+              {modelNumField("hourlyReqQuota", "hourlyReqQuota", idx, m.hourlyReqQuota)}
+              {modelNumField("dailyPointQuota", "dailyPointQuota", idx, m.dailyPointQuota)}
+              {modelNumField("hourlyPointQuota", "hourlyPointQuota", idx, m.hourlyPointQuota)}
+              <div className="form-actions">
+                <button type="button" className="danger sm" onClick={() => removeModelQuota(idx)}>
+                  <Icon name="trash" size={13} /> {t("removeRow", lang)}
+                </button>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="ghost sm" onClick={addModelQuota} style={{ marginBottom: 18 }}>
+            <Icon name="plus" size={13} /> {t("addModelQuota", lang)}
+          </button>
+
+          {saveError && <ErrorBanner message={saveError} />}
+          <div className="form-actions">
+            <button type="button" onClick={save} disabled={saving}>
+              <Icon name="check" size={14} /> {t("saveQuotas", lang)}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </Modal>
   );
 }

@@ -176,6 +176,54 @@ export interface KeyStats {
   [k: string]: unknown;
 }
 
+// Mirrors dto.QuotaConfigItem — per-model quota override with its live usage.
+export interface QuotaConfigItem {
+  modelName: string;
+  dailyTokenQuota: number;
+  hourlyTokenQuota: number;
+  hourlyReqQuota: number;
+  dailyPointQuota: number;
+  hourlyPointQuota: number;
+  dailyTokenUsed: number;
+  hourlyTokenUsed: number;
+  hourlyReqUsed: number;
+  dailyPointUsed: number;
+  hourlyPointUsed: number;
+}
+
+// Mirrors dto.QuotaConfigResp (GET /ai/gateway/key/quota-config).
+export interface QuotaConfig {
+  keyId: number;
+  name: string;
+  keyPrefix: string;
+  providerId: number;
+  allowedModels?: unknown;
+  dailyTokenQuota: number;
+  hourlyTokenQuota: number;
+  hourlyReqQuota: number;
+  maxConcurrency: number;
+  dailyPointQuota: number;
+  hourlyPointQuota: number;
+  modelQuotas: QuotaConfigItem[];
+}
+
+// Mirrors dto.KeyQuotaUsageResp (GET /ai/gateway/key/quota-usage).
+export interface KeyQuotaUsage {
+  keyId: number;
+  dailyTokenQuota: number;
+  dailyTokenUsed: number;
+  hourlyTokenQuota: number;
+  hourlyTokenUsed: number;
+  hourlyReqQuota: number;
+  hourlyReqUsed: number;
+  maxConcurrency: number;
+  currentConcurrency: number;
+  dailyPointQuota: number;
+  dailyPointUsed: number;
+  hourlyPointQuota: number;
+  hourlyPointUsed: number;
+}
+
 export interface Provider {
   id: number;
   name: string;
