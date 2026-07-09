@@ -10,6 +10,8 @@ const (
 	QuotaDimDailyPoint  = "daily_point"
 	QuotaDimHourlyPoint = "hourly_point"
 	QuotaDimToolCall    = "tool_call"
+	QuotaDimImageCall   = "image_call"
+	QuotaDimAudioCall   = "audio_call"
 )
 
 const (

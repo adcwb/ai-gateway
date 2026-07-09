@@ -211,6 +211,13 @@ func NewHTTPServer(
 	mux.Handle("GET /ai/v1/batches/{id}", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesGet))))
 	mux.Handle("POST /ai/v1/batches/{id}/cancel", tracing.Middleware("openai-batch", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.BatchesCancel))))
 
+	// Multimodal media adapters, phase 1 (docs/superpowers/specs/2026-07-09-
+	// multimodal-media-adapters-design.md): image generation + audio TTS/ASR,
+	// openai_compatible providers only. Registered before the /ai/v1/ catch-all.
+	mux.Handle("POST /ai/v1/images/generations", tracing.Middleware("openai-images", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ImagesGenerations))))
+	mux.Handle("POST /ai/v1/audio/speech", tracing.Middleware("openai-audio", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.AudioSpeech))))
+	mux.Handle("POST /ai/v1/audio/transcriptions", tracing.Middleware("openai-audio", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.AudioTranscriptions))))
+
 	mux.Handle("/ai/v1/", tracing.Middleware("openai", auth.ProxyMiddleware(http.HandlerFunc(gwSvc.ProxyRequest))))
 
 	// Anthropic Messages API inbound codec (docs/design/02-protocol-adapters.md):

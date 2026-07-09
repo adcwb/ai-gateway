@@ -67,6 +67,14 @@ type AIVirtualKey struct {
 	// 0 = unlimited, same convention as the other quota fields.
 	HourlyToolCallQuota int64 `gorm:"column:hourly_tool_call_quota;default:0" json:"hourlyToolCallQuota"`
 
+	// HourlyImageCallQuota/HourlyAudioCallQuota are dedicated budgets for the
+	// phase-1 multimodal media adapters (images/generations, audio/speech,
+	// audio/transcriptions — docs/superpowers/specs/2026-07-09-multimodal-
+	// media-adapters-design.md), independent of HourlyReqQuota and of each
+	// other. 0 = unlimited, same convention as HourlyToolCallQuota.
+	HourlyImageCallQuota int64 `gorm:"column:hourly_image_call_quota;default:0" json:"hourlyImageCallQuota"`
+	HourlyAudioCallQuota int64 `gorm:"column:hourly_audio_call_quota;default:0" json:"hourlyAudioCallQuota"`
+
 	ModelQuotas []AIVirtualKeyModelQuota `gorm:"-" json:"modelQuotas,omitempty"`
 }
 

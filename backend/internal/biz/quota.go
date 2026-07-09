@@ -173,6 +173,14 @@ func hourlyToolCallKey(keyID uint) string {
 	return fmt.Sprintf("ai:gw:rl:toolcalls:%d", keyID)
 }
 
+func hourlyImageCallKey(keyID uint) string {
+	return fmt.Sprintf("ai:gw:rl:imagecalls:%d", keyID)
+}
+
+func hourlyAudioCallKey(keyID uint) string {
+	return fmt.Sprintf("ai:gw:rl:audiocalls:%d", keyID)
+}
+
 // CheckAndReserve checks quota and reserves concurrency slot before a request.
 func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtualKey) (requestID string, err error) {
 	rdb := q.rdb
@@ -355,6 +363,56 @@ func (q *QuotaManager) CheckAndReserveToolCall(ctx context.Context, key *model.A
 	if n < 0 {
 		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimToolCall, key.HourlyToolCallQuota, key.HourlyToolCallQuota, "")
 		return fmt.Errorf("每小时工具调用次数已达上限 (%d)", key.HourlyToolCallQuota)
+	}
+	return nil
+}
+
+// CheckAndReserveImageCall enforces a key's dedicated images/generations
+// budget (QuotaDimImageCall, docs/superpowers/specs/2026-07-09-multimodal-
+// media-adapters-design.md), independent of HourlyReqQuota and of
+// HourlyAudioCallQuota. A zero quota means unlimited.
+func (q *QuotaManager) CheckAndReserveImageCall(ctx context.Context, key *model.AIVirtualKey) error {
+	if key.HourlyImageCallQuota <= 0 {
+		return nil
+	}
+	rdb := q.rdb
+	now := time.Now()
+	windowSecs := int64(slidingWindowDuration / time.Second)
+	bucketSecs := int64(slidingWindowBucket / time.Second)
+
+	n, scriptErr := rollingCheckAddScript.Run(ctx, rdb, []string{hourlyImageCallKey(key.ID)},
+		now.Unix(), windowSecs, bucketSecs, key.HourlyImageCallQuota, 1).Int64()
+	if scriptErr != nil {
+		return fmt.Errorf("redis error: %w", scriptErr)
+	}
+	if n < 0 {
+		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimImageCall, key.HourlyImageCallQuota, key.HourlyImageCallQuota, "")
+		return fmt.Errorf("每小时图像生成调用次数已达上限 (%d)", key.HourlyImageCallQuota)
+	}
+	return nil
+}
+
+// CheckAndReserveAudioCall enforces a key's dedicated audio budget
+// (QuotaDimAudioCall), shared by audio/speech and audio/transcriptions —
+// independent of HourlyReqQuota and of HourlyImageCallQuota. A zero quota
+// means unlimited.
+func (q *QuotaManager) CheckAndReserveAudioCall(ctx context.Context, key *model.AIVirtualKey) error {
+	if key.HourlyAudioCallQuota <= 0 {
+		return nil
+	}
+	rdb := q.rdb
+	now := time.Now()
+	windowSecs := int64(slidingWindowDuration / time.Second)
+	bucketSecs := int64(slidingWindowBucket / time.Second)
+
+	n, scriptErr := rollingCheckAddScript.Run(ctx, rdb, []string{hourlyAudioCallKey(key.ID)},
+		now.Unix(), windowSecs, bucketSecs, key.HourlyAudioCallQuota, 1).Int64()
+	if scriptErr != nil {
+		return fmt.Errorf("redis error: %w", scriptErr)
+	}
+	if n < 0 {
+		recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimAudioCall, key.HourlyAudioCallQuota, key.HourlyAudioCallQuota, "")
+		return fmt.Errorf("每小时音频调用次数已达上限 (%d)", key.HourlyAudioCallQuota)
 	}
 	return nil
 }

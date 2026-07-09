@@ -24,6 +24,19 @@ const emptyModelForm = {
   cacheWritePricePerMillion: 0,
 };
 
+// Phase 1 multimodal media adapters (docs/superpowers/specs/2026-07-09-
+// multimodal-media-adapters-design.md): "image"/"tts"/"asr" are the modality
+// values media_proxy.go's resolveMediaModel filters candidates by; "llm" is
+// the pre-existing default. Console-only addition — the backend never
+// validated modelType against a whitelist.
+const modelTypeOptions = ["llm", "image", "tts", "asr"] as const;
+const modelTypeLabelKey: Record<string, "modelTypeLLM" | "modelTypeImage" | "modelTypeTTS" | "modelTypeASR"> = {
+  llm: "modelTypeLLM",
+  image: "modelTypeImage",
+  tts: "modelTypeTTS",
+  asr: "modelTypeASR",
+};
+
 const emptyTableForm = { id: 0, name: "", currency: "CNY" };
 const emptyItemForm = { id: 0, priceTableId: 0, modelPattern: "", inputPricePerMillion: 0, outputPricePerMillion: 0, cacheReadPerMillion: 0 };
 
@@ -208,6 +221,12 @@ export default function ModelsPricing({ lang }: { lang: Lang }) {
               <input value={modelForm.name} onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })} required disabled={!!modelForm.id} autoFocus />
             </label>
             <label className="field">
+              <div className="field-label">{t("modelType", lang)}</div>
+              <select value={modelForm.modelType} onChange={(e) => setModelForm({ ...modelForm, modelType: e.target.value })}>
+                {modelTypeOptions.map((mt) => <option key={mt} value={mt}>{t(modelTypeLabelKey[mt], lang)}</option>)}
+              </select>
+            </label>
+            <label className="field">
               <div className="field-label">{t("contextWindow", lang)}</div>
               <input type="number" min="0" value={modelForm.contextWindow} onChange={(e) => setModelForm({ ...modelForm, contextWindow: Number(e.target.value) || 0 })} />
             </label>
@@ -261,7 +280,13 @@ export default function ModelsPricing({ lang }: { lang: Lang }) {
               models.map((m) => (
                 <tr key={m.id}>
                   <td className="muted mono">{providerName(m.providerId)}</td>
-                  <td className="mono">{m.name} {m.isDefault && <span className="pill on">{t("isDefaultModel", lang)}</span>}</td>
+                  <td className="mono">
+                    {m.name}{" "}
+                    {m.modelType && m.modelType !== "llm" && (
+                      <span className="pill info">{t(modelTypeLabelKey[m.modelType] ?? "modelTypeLLM", lang)}</span>
+                    )}{" "}
+                    {m.isDefault && <span className="pill on">{t("isDefaultModel", lang)}</span>}
+                  </td>
                   <td className="mono">{m.contextWindow || "—"}</td>
                   <td className="mono">{m.inputPricePerMillion}</td>
                   <td className="mono">{m.outputPricePerMillion}</td>

@@ -78,4 +78,12 @@ var (
 	// PII/guardrail policies (docs/design/06-security-and-guardrails.md).
 	ErrPIIPolicyNotFound = kerrors.NotFound("PII_POLICY_NOT_FOUND", "policy not found")
 	ErrPIIPolicyInvalid  = kerrors.BadRequest("PII_POLICY_INVALID", "name and action are required")
+
+	// Multimodal media adapters, phase 1 (docs/superpowers/specs/2026-07-09-
+	// multimodal-media-adapters-design.md): image generation + audio TTS/ASR.
+	ErrMediaModelRequired       = kerrors.BadRequest("MEDIA_MODEL_REQUIRED", "model is required")
+	ErrMediaModelNotFound       = kerrors.NotFound("MEDIA_MODEL_NOT_FOUND", "no matching image/audio model for this key")
+	ErrMediaProviderUnsupported = kerrors.BadRequest("MEDIA_PROVIDER_UNSUPPORTED", "resolved provider does not support this media endpoint in this gateway version")
+	ErrImageCallQuotaExceeded   = kerrors.New(429, "IMAGE_CALL_QUOTA_EXCEEDED", "hourly image call quota exceeded")
+	ErrAudioCallQuotaExceeded   = kerrors.New(429, "AUDIO_CALL_QUOTA_EXCEEDED", "hourly audio call quota exceeded")
 )

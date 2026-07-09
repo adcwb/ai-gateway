@@ -7,6 +7,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// ModelType values. "llm" is the default (set inline where the field is
+// populated); the other three are phase-1 multimodal media adapters
+// (docs/superpowers/specs/2026-07-09-multimodal-media-adapters-design.md) —
+// media_proxy.go filters candidate models by these to keep an image/audio
+// request from ever resolving onto a text-generation model or vice versa.
+const (
+	ModelTypeLLM   = "llm"
+	ModelTypeImage = "image"
+	ModelTypeTTS   = "tts"
+	ModelTypeASR   = "asr"
+)
+
 type AIModelItem struct {
 	ID        uint           `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	CreatedAt time.Time      `gorm:"column:created_at;autoCreateTime" json:"createdAt"`

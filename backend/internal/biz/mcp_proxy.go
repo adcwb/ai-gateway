@@ -96,13 +96,15 @@ func blockedToolResultContent(reason string) json.RawMessage {
 	return out
 }
 
-// mcpGuardrailScan runs the key's resolved guardrail chain (the same one
+// guardrailScanText runs the key's resolved guardrail chain (the same one
 // applyPIIPolicy/applyOutboundGuardrail use for model traffic — docs/design/
 // 09 "argument-level guardrail checks (the D06 chain runs on tool arguments/
-// results)") against one piece of text. No configured policy/chain is a
+// results)") against one piece of text. Shared by MCP tool governance and the
+// media proxy's prompt/transcript scanning (docs/superpowers/specs/2026-07-09-
+// multimodal-media-adapters-design.md). No configured policy/chain is a
 // silent pass-through, matching the rest of the guardrail pipeline's
 // fail-open-by-absence posture.
-func (uc *GatewayUseCase) mcpGuardrailScan(ctx context.Context, key *model.AIVirtualKey, dir guardrail.Direction, text string) (finalText string, blocked bool, types string) {
+func (uc *GatewayUseCase) guardrailScanText(ctx context.Context, key *model.AIVirtualKey, dir guardrail.Direction, text string) (finalText string, blocked bool, types string) {
 	if text == "" {
 		return text, false, ""
 	}
@@ -326,7 +328,7 @@ func (uc *GatewayUseCase) handleOneMCPMessage(ctx context.Context, key *model.AI
 			return wrap(mcpgw.ErrorResponse(req.ID, mcpgw.ErrCodeToolCallQuotaExceeded, qerr.Error())), "", http.StatusOK, "application/json"
 		}
 
-		finalArgs, blocked, types := uc.mcpGuardrailScan(ctx, key, guardrail.DirectionInbound, string(params.Arguments))
+		finalArgs, blocked, types := uc.guardrailScanText(ctx, key, guardrail.DirectionInbound, string(params.Arguments))
 		if blocked {
 			msg := "tool call arguments blocked by guardrail policy"
 			uc.writeAuditLog(ctx, key, 0, serverName+"/"+toolName, auditReqBody, nil, 0, 0, 0, 0,
@@ -367,7 +369,7 @@ func (uc *GatewayUseCase) handleOneMCPMessage(ctx context.Context, key *model.AI
 			var result mcpgw.ToolCallResult
 			if json.Unmarshal(rpcResp.Result, &result) == nil {
 				resultText := extractToolResultText(result.Content)
-				finalText, blocked, _ := uc.mcpGuardrailScan(ctx, key, guardrail.DirectionOutbound, resultText)
+				finalText, blocked, _ := uc.guardrailScanText(ctx, key, guardrail.DirectionOutbound, resultText)
 				if blocked {
 					result.Content = blockedToolResultContent("tool result blocked by guardrail policy")
 					result.IsError = true
