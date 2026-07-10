@@ -9,7 +9,7 @@ import {
   type Tenant,
 } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, Skeleton, TableSkeleton } from "../components/ui";
+import { Button, Card, CardRow, EmptyState, ErrorBanner, Icon, Skeleton, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 export default function Billing({ lang }: { lang: Lang }) {
   const [tenantId, setTenantId] = useState(0);
@@ -88,27 +88,27 @@ export default function Billing({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("billing", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8 items-center">
-          <select
-            value={tenantId}
-            onChange={(e) => setTenantId(Number(e.target.value))}
-            style={{ width: "auto" }}
-            aria-label={t("selectTenant", lang)}
-          >
-            {tenants.map((x) => (
-              <option key={x.id} value={x.id}>{x.name}</option>
-            ))}
-          </select>
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("billing", lang)}
+        actions={
+          <>
+            <select
+              value={tenantId}
+              onChange={(e) => setTenantId(Number(e.target.value))}
+              style={{ width: "auto" }}
+              aria-label={t("selectTenant", lang)}
+            >
+              {tenants.map((x) => (
+                <option key={x.id} value={x.id}>{x.name}</option>
+              ))}
+            </select>
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -120,20 +120,20 @@ export default function Billing({ lang }: { lang: Lang }) {
         />
       )}
 
-      <div className="cards">
-        <div className="card stat">
+      <CardRow>
+        <Card className="stat">
           <div className="label">{t("balance", lang)}</div>
           {tenantsQ.loading && !acct ? <Skeleton w={90} h={26} /> : <div className="value">{acct ? credits(acct.balanceMicro) : "—"}</div>}
           <div className="sub">{acct ? `${acct.currency} · ${t(`status_${acct.status}`, lang)}` : ""}</div>
-        </div>
-        <div className="card stat">
+        </Card>
+        <Card className="stat">
           <div className="label">{t("billingMode", lang)}</div>
           <div className="value" style={{ fontSize: 18 }}>{acct?.mode ?? "—"}</div>
-          <button className="ghost sm" style={{ marginTop: 10 }} onClick={toggleBilling}>
+          <Button variant="ghost" size="sm" style={{ marginTop: 10 }} onClick={toggleBilling}>
             {acct?.isEnabled ? t("disableBilling", lang) : t("enableBilling", lang)}
-          </button>
-        </div>
-        <div className="card" style={{ minWidth: 280 }}>
+          </Button>
+        </Card>
+        <Card style={{ minWidth: 280 }}>
           <div className="label">{t("recharge", lang)}</div>
           <div className="flex gap-8" style={{ marginTop: 6 }}>
             <input
@@ -145,15 +145,15 @@ export default function Billing({ lang }: { lang: Lang }) {
               placeholder={t("rechargeAmount", lang)}
               onKeyDown={(e) => e.key === "Enter" && recharge()}
             />
-            <button onClick={recharge}>
+            <Button onClick={recharge}>
               <Icon name="plus" size={14} /> {t("submit", lang)}
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
+        </Card>
+      </CardRow>
 
       <h1 className="section-title">{t("ledger", lang)}</h1>
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -176,9 +176,9 @@ export default function Billing({ lang }: { lang: Lang }) {
                       title={t("noBillingAccount", lang)}
                       sub={t("noBillingAccountSub", lang)}
                       action={
-                        <button className="ghost sm" onClick={ledgerQ.refresh}>
+                        <Button variant="ghost" size="sm" onClick={ledgerQ.refresh}>
                           <Icon name="refresh" size={13} /> {t("retry", lang)}
-                        </button>
+                        </Button>
                       }
                     />
                   </td>
@@ -189,9 +189,9 @@ export default function Billing({ lang }: { lang: Lang }) {
                     <div className="table-error">
                       <Icon name="alert" size={16} />
                       <span>{t("loadFailed", lang)}: {ledgerQ.error}</span>
-                      <button className="ghost sm" onClick={ledgerQ.refresh}>
+                      <Button variant="ghost" size="sm" onClick={ledgerQ.refresh}>
                         <Icon name="refresh" size={13} /> {t("retry", lang)}
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -207,7 +207,7 @@ export default function Billing({ lang }: { lang: Lang }) {
                 <tr key={e.id}>
                   <td className="muted mono">{new Date(e.createdAt).toLocaleString()}</td>
                   <td className="mono">{e.entryType}</td>
-                  <td className="num mono" style={{ color: e.amountMicro >= 0 ? "var(--ok)" : "var(--err)" }}>
+                  <td className="num mono" style={{ color: e.amountMicro >= 0 ? "var(--ok-text)" : "var(--err-text)" }}>
                     {e.amountMicro >= 0 ? "+" : ""}{credits(e.amountMicro)}
                   </td>
                   <td className="num mono">{credits(e.balanceAfterMicro)}</td>
@@ -217,7 +217,7 @@ export default function Billing({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

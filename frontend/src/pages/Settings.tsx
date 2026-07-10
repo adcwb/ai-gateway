@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, useAsync, type CreditsRate, type Provider, type Settings as SettingsResp } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import {
+  Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Pill, TableSkeleton, TableWrap, Topbar,
+} from "../components/ui";
 
 const emptyRateForm = { id: 0, currency: "", ratePerCredit: 0.01, description: "" };
 
@@ -108,89 +110,86 @@ export default function Settings({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("settings", lang)}</h1>
-        </div>
-      </div>
+      <Topbar eyebrow={t("navManage", lang)} title={t("settings", lang)} />
 
       {showError && <ErrorBanner message={showError} onRetry={() => { setActionError(""); settingsQ.refresh(); ratesQ.refresh(); providersQ.refresh(); }} />}
 
-      <div className="card mb-16">
+      <Card className="mb-16">
         <div className="label mb-16">{t("alertWebhook", lang)}</div>
-        <div className="form-grid">
-          <label className="field span-3">
-            <div className="field-label">
-              {t("webhookUrl", lang)}
-              {settingsQ.data?.alertWebhookIsOverride && <span className="pill info" style={{ marginLeft: 8 }}>{t("consoleOverride", lang)}</span>}
-            </div>
+        <FormGrid>
+          <Field
+            span={3}
+            label={
+              <>
+                {t("webhookUrl", lang)}
+                {settingsQ.data?.alertWebhookIsOverride && (
+                  <span style={{ marginLeft: 8 }}><Pill tone="info">{t("consoleOverride", lang)}</Pill></span>
+                )}
+              </>
+            }
+          >
             <input value={webhookInput} onChange={(e) => setWebhookInput(e.target.value)} placeholder="https://hooks.example.com/aigw" />
-          </label>
+          </Field>
           <div className="form-actions">
-            <button onClick={saveWebhook}><Icon name="check" size={14} /> {t("save", lang)}</button>
-            <button className="ghost" onClick={testWebhook} disabled={!webhookInput}>{t("testWebhook", lang)}</button>
+            <Button onClick={saveWebhook}><Icon name="check" size={14} /> {t("save", lang)}</Button>
+            <Button variant="ghost" onClick={testWebhook} disabled={!webhookInput}>{t("testWebhook", lang)}</Button>
           </div>
-        </div>
+        </FormGrid>
         {testResult && <div className="sub mt-8">{testResult}</div>}
-      </div>
+      </Card>
 
-      <div className="card mb-16">
+      <Card className="mb-16">
         <div className="label mb-16">{t("semanticCacheEmbedding", lang)}</div>
         <div className="sub mb-8">{t("semanticCacheEmbeddingHint", lang)}</div>
-        <div className="form-grid">
-          <label className="field">
-            <div className="field-label">{t("provider", lang)}</div>
+        <FormGrid>
+          <Field label={t("provider", lang)}>
             <select value={embedding.providerId} onChange={(e) => setEmbedding({ ...embedding, providerId: Number(e.target.value) })}>
               <option value={0}>—</option>
               {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </label>
-          <label className="field">
-            <div className="field-label">{t("embeddingModel", lang)}</div>
+          </Field>
+          <Field label={t("embeddingModel", lang)}>
             <input value={embedding.model} onChange={(e) => setEmbedding({ ...embedding, model: e.target.value })} placeholder="text-embedding-3-small" />
-          </label>
-          <label className="field">
-            <div className="field-label">{t("embeddingDim", lang)}</div>
+          </Field>
+          <Field label={t("embeddingDim", lang)}>
             <input type="number" min="0" value={embedding.dim || ""} onChange={(e) => setEmbedding({ ...embedding, dim: Number(e.target.value) || 0 })} />
-          </label>
+          </Field>
           <div className="form-actions">
-            <button onClick={saveEmbedding}><Icon name="check" size={14} /> {t("save", lang)}</button>
+            <Button onClick={saveEmbedding}><Icon name="check" size={14} /> {t("save", lang)}</Button>
           </div>
-        </div>
-      </div>
+        </FormGrid>
+      </Card>
 
       <div className="topbar">
         <div className="titles"><h2 style={{ fontSize: 15, margin: 0 }}>{t("creditsRates", lang)}</h2></div>
         <div className="actions">
-          <button onClick={() => startEditRate()}><Icon name="plus" size={14} /> {t("addRate", lang)}</button>
+          <Button onClick={() => startEditRate()}><Icon name="plus" size={14} /> {t("addRate", lang)}</Button>
         </div>
       </div>
 
       {showRateForm && (
-        <form className="card mb-16" onSubmit={submitRate}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("currency", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={submitRate}>
+          <FormGrid>
+            <Field label={t("currency", lang)}>
               <input value={rateForm.currency} onChange={(e) => setRateForm({ ...rateForm, currency: e.target.value.toUpperCase() })} required disabled={!!rateForm.id} placeholder="USD" autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("ratePerCredit", lang)}</div>
+            </Field>
+            <Field label={t("ratePerCredit", lang)}>
               <input type="number" min="0" step="0.0001" value={rateForm.ratePerCredit} onChange={(e) => setRateForm({ ...rateForm, ratePerCredit: Number(e.target.value) || 0 })} required />
-            </label>
-            <label className="field span-3">
-              <div className="field-label">{t("remark", lang)}</div>
+            </Field>
+            <Field span={3} label={t("remark", lang)}>
               <input value={rateForm.description} onChange={(e) => setRateForm({ ...rateForm, description: e.target.value })} />
-            </label>
+            </Field>
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowRateForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowRateForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap mb-16">
+      <TableWrap className="mb-16">
         <table>
           <thead>
             <tr>
@@ -212,12 +211,12 @@ export default function Settings({ lang }: { lang: Lang }) {
                   <td className="mono">{r.currency}</td>
                   <td className="mono">{r.ratePerCredit}</td>
                   <td className="muted">{r.description || "—"}</td>
-                  <td>{r.isEnabled ? <span className="pill on">{t("enabled", lang)}</span> : <span className="pill off">{t("disabled", lang)}</span>}</td>
+                  <td><Pill tone={r.isEnabled ? "on" : "off"}>{t(r.isEnabled ? "enabled" : "disabled", lang)}</Pill></td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => startEditRate(r)}>{t("editProvider", lang)}</button>
-                      <button className="ghost sm" onClick={() => toggleRate(r)}>{r.isEnabled ? t("disable", lang) : t("enable", lang)}</button>
-                      <button className="danger sm" onClick={() => deleteRate(r)}><Icon name="trash" size={13} /> {t("deleteProvider", lang)}</button>
+                      <Button variant="ghost" size="sm" onClick={() => startEditRate(r)}>{t("editProvider", lang)}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => toggleRate(r)}>{r.isEnabled ? t("disable", lang) : t("enable", lang)}</Button>
+                      <Button variant="danger" size="sm" onClick={() => deleteRate(r)}><Icon name="trash" size={13} /> {t("deleteProvider", lang)}</Button>
                     </div>
                   </td>
                 </tr>
@@ -225,15 +224,15 @@ export default function Settings({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
 
-      <div className="card">
+      <Card>
         <div className="label mb-16">{t("about", lang)}</div>
         <div className="detail-grid">
           <div><div className="k">{t("aboutProject", lang)}</div><div className="v">ai-gateway</div></div>
           <div><div className="k">{t("aboutRepo", lang)}</div><div className="v">github.com/opscenter/ai-gateway</div></div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

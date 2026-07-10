@@ -21,6 +21,13 @@ const dict: Record<string, { en: string; zh: string }> = {
     en: "Enter the admin token configured in system.admin_token (AIGW_ADMIN_TOKEN).",
     zh: "输入 system.admin_token（AIGW_ADMIN_TOKEN）配置的管理令牌。",
   },
+  loginHintMulti: { en: "Choose how you'd like to sign in.", zh: "选择登录方式。" },
+  loginMethodSso: { en: "Single sign-on", zh: "单点登录" },
+  ssoHint: { en: "Redirects to your organization's identity provider.", zh: "将跳转至您所在组织的身份提供方。" },
+  loginTrust: {
+    en: "Self-hosted — this token is verified against your own server, never sent anywhere else.",
+    zh: "自托管——此令牌仅在您自己的服务器上验证，不会发送到其他任何地方。",
+  },
   adminToken: { en: "Admin token", zh: "管理令牌" },
   loginTagline: {
     en: "Keys, providers, billing, and live usage — one operator console for the ai-gateway.",

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, setToken, type AuthConfig } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { Icon, type IconName } from "../components/ui";
+import { BrandMark, Button, Field, Icon, Tabs, type IconName } from "../components/ui";
 
 interface Props {
   lang: Lang;
@@ -21,6 +21,7 @@ export default function Login({ lang, onLogin, onToggleLang }: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [method, setMethod] = useState<"token" | "sso">("token");
 
   useEffect(() => {
     api.get<AuthConfig>("/ai/gateway/auth/config").then((c) => setOidcEnabled(c.oidcEnabled)).catch(() => {});
@@ -45,9 +46,9 @@ export default function Login({ lang, onLogin, onToggleLang }: Props) {
   return (
     <div className="login-wrap">
       <aside className="login-pane">
-        <div className="pane-deco"><Icon name="torii" size={320} /></div>
+        <div className="pane-deco"><BrandMark size={320} strokeWidth={1.4} /></div>
         <div className="pane-brand">
-          <span className="pane-mark"><Icon name="torii" size={26} /></span>
+          <span className="pane-mark"><BrandMark size={26} /></span>
           <div>
             <div className="pane-title">{t("appName", lang)}</div>
             <div className="brand-sub">Operator Console</div>
@@ -65,36 +66,55 @@ export default function Login({ lang, onLogin, onToggleLang }: Props) {
       </aside>
 
       <main className="login-form">
-        <form className="login-box" onSubmit={submit}>
+        <button type="button" className="login-lang" onClick={onToggleLang}>
+          <Icon name="globe" size={13} /> {lang === "en" ? "中文" : "English"}
+        </button>
+        <div className="login-card">
           <h1>{t("login", lang)}</h1>
-          <p className="hint">{t("loginHint", lang)}</p>
-          <label className="field">
-            <div className="field-label">{t("adminToken", lang)}</div>
-            <input
-              type="password"
-              placeholder={t("adminToken", lang)}
-              value={token}
-              onChange={(e) => setTokenInput(e.target.value)}
-              autoFocus
-            />
-          </label>
-          {error && <div className="error-text">{error}</div>}
-          <button type="submit" disabled={busy}>
-            {busy ? <Icon name="refresh" size={14} className="spin" /> : <Icon name="logout" size={14} />}{" "}
-            {t("login", lang)}
-          </button>
+          {oidcEnabled && <p className="hint">{t("loginHintMulti", lang)}</p>}
+
           {oidcEnabled && (
-            <>
-              <div className="sub" style={{ textAlign: "center", margin: "4px 0" }}>{t("or", lang)}</div>
-              <button type="button" className="ghost" onClick={() => { window.location.href = "/ai/gateway/auth/login"; }}>
-                <Icon name="globe" size={14} /> {t("ssoLogin", lang)}
-              </button>
-            </>
+            <Tabs
+              items={[
+                { key: "token", label: t("adminToken", lang) },
+                { key: "sso", label: t("loginMethodSso", lang) },
+              ]}
+              active={method}
+              onChange={(k) => setMethod(k as "token" | "sso")}
+            />
           )}
-          <button type="button" className="ghost" onClick={onToggleLang}>
-            <Icon name="globe" size={14} /> {lang === "en" ? "中文" : "English"}
-          </button>
-        </form>
+
+          {(!oidcEnabled || method === "token") && (
+            <form onSubmit={submit}>
+              <p className="hint mb-16">{t("loginHint", lang)}</p>
+              <Field label={t("adminToken", lang)}>
+                <input
+                  type="password"
+                  placeholder={t("adminToken", lang)}
+                  value={token}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  autoFocus
+                />
+              </Field>
+              {error && <div className="error-text mt-8">{error}</div>}
+              <Button type="submit" disabled={busy} style={{ marginTop: 14, width: "100%" }}>
+                {busy ? <Icon name="refresh" size={14} className="spin" /> : <Icon name="logout" size={14} />}{" "}
+                {t("login", lang)}
+              </Button>
+            </form>
+          )}
+
+          {oidcEnabled && method === "sso" && (
+            <div className="login-sso">
+              <p className="hint">{t("ssoHint", lang)}</p>
+              <Button type="button" style={{ width: "100%" }} onClick={() => { window.location.href = "/ai/gateway/auth/login"; }}>
+                <Icon name="globe" size={14} /> {t("ssoLogin", lang)}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <p className="login-trust">{t("loginTrust", lang)}</p>
       </main>
     </div>
   );

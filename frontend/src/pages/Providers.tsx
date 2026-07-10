@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, useAsync, type Provider, type ProviderHealth } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const emptyForm = {
   id: 0,
@@ -101,20 +101,20 @@ export default function Providers({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navOperate", lang)}</div>
-          <h1>{t("providers", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8">
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-          <button onClick={() => startEdit()}>
-            <Icon name="plus" size={14} /> {t("addProvider", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navOperate", lang)}
+        title={t("providers", lang)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button onClick={() => startEdit()}>
+              <Icon name="plus" size={14} /> {t("addProvider", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -127,32 +127,29 @@ export default function Providers({ lang }: { lang: Lang }) {
       )}
 
       {showForm && (
-        <form className="card mb-16" onSubmit={submit}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("name", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={submit}>
+          <FormGrid>
+            <Field label={t("name", lang)}>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("baseUrl", lang)}</div>
+            </Field>
+            <Field label={t("baseUrl", lang)}>
               <input
                 value={form.baseUrl}
                 onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
                 required
                 placeholder="https://api.openai.com/v1"
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("providerType", lang)}</div>
+            </Field>
+            <Field label={t("providerType", lang)}>
               <select value={form.providerType} onChange={(e) => setForm({ ...form, providerType: e.target.value })}>
                 <option value="openai_compatible">openai_compatible</option>
                 <option value="anthropic">anthropic</option>
                 <option value="azure_openai">azure_openai</option>
                 <option value="gemini">gemini</option>
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("apiKeyWriteOnly", lang)}</div>
+            </Field>
+            <Field label={t("apiKeyWriteOnly", lang)}>
               <input
                 type="password"
                 value={form.apiKey}
@@ -160,28 +157,26 @@ export default function Providers({ lang }: { lang: Lang }) {
                 required={!form.id}
                 placeholder={form.id ? "••••••  (leave blank to keep)" : ""}
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("weight", lang)}</div>
+            </Field>
+            <Field label={t("weight", lang)}>
               <input type="number" min="0" value={form.weight} onChange={(e) => setForm({ ...form, weight: Number(e.target.value) || 0 })} />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("priority", lang)}</div>
+            </Field>
+            <Field label={t("priority", lang)}>
               <input type="number" min="0" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) || 0 })} />
-            </label>
-            <label className="field span-3">
-              <div className="field-label">{t("modelsCsv", lang)}</div>
+            </Field>
+            <Field span={3} label={t("modelsCsv", lang)}>
               <input value={form.modelsCsv} onChange={(e) => setForm({ ...form, modelsCsv: e.target.value })} placeholder="gpt-4o-mini, gpt-4o" />
-            </label>
+            </Field>
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -205,9 +200,9 @@ export default function Providers({ lang }: { lang: Lang }) {
                     title={t("emptyProviders", lang)}
                     sub={t("emptyProvidersSub", lang)}
                     action={
-                      <button onClick={() => startEdit()}>
+                      <Button onClick={() => startEdit()}>
                         <Icon name="plus" size={14} /> {t("addProvider", lang)}
-                      </button>
+                      </Button>
                     }
                   />
                 </td>
@@ -231,13 +226,13 @@ export default function Providers({ lang }: { lang: Lang }) {
                     </td>
                     <td>
                       <div className="row-actions">
-                        <button className="ghost sm" onClick={() => startEdit(p)}>{t("editProvider", lang)}</button>
-                        <button className="ghost sm" onClick={() => syncModels(p)}>
+                        <Button variant="ghost" size="sm" onClick={() => startEdit(p)}>{t("editProvider", lang)}</Button>
+                        <Button variant="ghost" size="sm" onClick={() => syncModels(p)}>
                           <Icon name="sync" size={13} /> {t("syncModels", lang)}
-                        </button>
-                        <button className="danger sm" onClick={() => remove(p)}>
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => remove(p)}>
                           <Icon name="trash" size={13} /> {t("deleteProvider", lang)}
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -246,7 +241,7 @@ export default function Providers({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

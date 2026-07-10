@@ -12,6 +12,7 @@ import (
 	"github.com/opscenter/ai-gateway/internal/biz"
 	"github.com/opscenter/ai-gateway/internal/conf"
 	"github.com/opscenter/ai-gateway/internal/console"
+	"github.com/opscenter/ai-gateway/internal/homepage"
 	"github.com/opscenter/ai-gateway/internal/middleware"
 	"github.com/opscenter/ai-gateway/internal/observability"
 	"github.com/opscenter/ai-gateway/internal/service"
@@ -186,6 +187,14 @@ func NewHTTPServer(
 
 	mux.Handle("/console/", http.StripPrefix("/console/", console.Handler()))
 	mux.Handle("/console", http.RedirectHandler("/console/", http.StatusMovedPermanently))
+
+	// -------------------------------------------------------------------------
+	// Public homepage (docs/superpowers/specs/2026-07-10-homepage-and-brand-
+	// mark-design.md) — a subtree pattern, so the more specific "/console/"
+	// registration above still wins for anything under it.
+	// -------------------------------------------------------------------------
+
+	mux.Handle("/", homepage.Handler())
 
 	// -------------------------------------------------------------------------
 	// Proxy routes — authenticated via sk-vk-* Bearer token

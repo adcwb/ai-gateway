@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, credits, useAsync, type Project, type Tenant } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, CardRow, EmptyState, ErrorBanner, Icon, Pill, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 export default function Tenants({ lang }: { lang: Lang }) {
   const [newTenant, setNewTenant] = useState("");
@@ -52,17 +52,15 @@ export default function Tenants({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("tenants", lang)}</h1>
-        </div>
-        <div className="actions">
-          <button className="ghost sm" onClick={refresh}>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("tenants", lang)}
+        actions={
+          <Button variant="ghost" size="sm" onClick={refresh}>
             <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -74,8 +72,8 @@ export default function Tenants({ lang }: { lang: Lang }) {
         />
       )}
 
-      <div className="cards">
-        <div className="card" style={{ flex: 1, minWidth: 280 }}>
+      <CardRow>
+        <Card style={{ flex: 1, minWidth: 280 }}>
           <div className="label">{t("createTenant", lang)}</div>
           <div className="flex gap-8" style={{ marginTop: 6 }}>
             <input
@@ -84,12 +82,12 @@ export default function Tenants({ lang }: { lang: Lang }) {
               placeholder={t("name", lang)}
               onKeyDown={(e) => e.key === "Enter" && createTenant()}
             />
-            <button onClick={createTenant}>
+            <Button onClick={createTenant}>
               <Icon name="plus" size={14} /> {t("submit", lang)}
-            </button>
+            </Button>
           </div>
-        </div>
-        <div className="card" style={{ flex: 1, minWidth: 320 }}>
+        </Card>
+        <Card style={{ flex: 1, minWidth: 320 }}>
           <div className="label">{t("createProject", lang)}</div>
           <div className="flex gap-8" style={{ marginTop: 6 }}>
             <select value={projectTenant} onChange={(e) => setProjectTenant(Number(e.target.value))}>
@@ -103,14 +101,14 @@ export default function Tenants({ lang }: { lang: Lang }) {
               placeholder={t("name", lang)}
               onKeyDown={(e) => e.key === "Enter" && createProject()}
             />
-            <button onClick={createProject}>
+            <Button onClick={createProject}>
               <Icon name="plus" size={14} /> {t("submit", lang)}
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
+        </Card>
+      </CardRow>
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -142,14 +140,12 @@ export default function Tenants({ lang }: { lang: Lang }) {
                     <td>{x.displayName || x.name}</td>
                     <td className="mono">{x.keyCount}</td>
                     <td>
-                      <span className={`pill ${x.account?.isEnabled ? "on" : "off"}`}>
-                        {x.account?.isEnabled ? "on" : "off"}
-                      </span>
+                      <Pill tone={x.account?.isEnabled ? "on" : "off"}>{x.account?.isEnabled ? "on" : "off"}</Pill>
                     </td>
                     <td className="mono">
                       {x.account ? `${credits(x.account.balanceMicro)} ${x.account.currency}` : "—"}
                     </td>
-                    <td>{x.account ? <span className={`pill ${tone}`}>{t(`status_${st}`, lang)}</span> : "—"}</td>
+                    <td>{x.account ? <Pill tone={tone}>{t(`status_${st}`, lang)}</Pill> : "—"}</td>
                     <td className="muted">
                       {projects.filter((p) => p.tenantId === x.id).map((p) => p.name).join(", ") || "—"}
                     </td>
@@ -159,7 +155,7 @@ export default function Tenants({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

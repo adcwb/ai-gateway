@@ -1,6 +1,9 @@
 import { api, useAsync, type KeyStats, type ProviderHealth, type UsageOverview, type UsagePoint } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { AreaChart, EmptyState, ErrorBanner, Icon, Live, Skeleton, StatCard, TableSkeleton } from "../components/ui";
+import {
+  AreaChart, Button, Card, CardRow, EmptyState, ErrorBanner, Icon, Live, Pill, Skeleton, StatCard, TableSkeleton,
+  TableWrap, Topbar,
+} from "../components/ui";
 
 export default function Dashboard({ lang }: { lang: Lang }) {
   const { data, loading, error, refresh } = useAsync<
@@ -31,37 +34,37 @@ export default function Dashboard({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navOperate", lang)}</div>
-          <h1>{t("dashboard", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8 items-center">
-          <Live label={`${t("live", lang)} 15s`} />
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navOperate", lang)}
+        title={t("dashboard", lang)}
+        actions={
+          <>
+            <Live label={`${t("live", lang)} 15s`} />
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {error && <ErrorBanner message={`${t("loadFailed", lang)}: ${error}`} onRetry={refresh} />}
 
       {/* Key stats */}
-      <div className="cards">
+      <CardRow>
         <StatCard icon="key" tone="accent" label={t("totalKeys", lang)} loading={firstKey} value={num(stats?.total)} />
         <StatCard icon="check" tone="ok" label={t("enabledKeys", lang)} loading={firstKey} value={num(stats?.enabled)} />
         <StatCard icon="key" tone="warn" label={t("disabledKeys", lang)} loading={firstKey} value={num(stats?.disabled)} />
-      </div>
+      </CardRow>
 
       {/* Usage overview */}
       <h1 className="section-title">{t("usage7d", lang)}</h1>
-      <div className="cards">
+      <CardRow>
         <StatCard icon="audit" tone="info" label={t("requests", lang)} loading={firstUsage} value={usage?.requests ?? "—"} />
         <StatCard icon="dashboard" tone="accent" label={t("promptTokens", lang)} loading={firstUsage} value={usage?.promptTokens ?? "—"} />
         <StatCard icon="dashboard" tone="accent" label={t("completionTokens", lang)} loading={firstUsage} value={usage?.completionTokens ?? "—"} />
         <StatCard icon="billing" tone="ok" label={t("price", lang)} loading={firstUsage} value={usage ? usage.priceCredits.toFixed(2) : "—"} />
         <StatCard icon="check" tone="ok" label={t("cacheHits", lang)} loading={firstUsage} value={usage?.cacheHits ?? "—"} />
-        <div className="card toplist">
+        <Card tone="toplist">
           <div className="label">{t("topModels", lang)}</div>
           <div style={{ marginTop: 4 }}>
             {firstUsage ? (
@@ -79,11 +82,11 @@ export default function Dashboard({ lang }: { lang: Lang }) {
               ))
             )}
           </div>
-        </div>
-      </div>
+        </Card>
+      </CardRow>
 
       {/* Trends */}
-      <div className="cards">
+      <CardRow>
         <AreaChart
           title={t("usageTrend", lang)}
           points={series.map((p) => ({ label: p.day.slice(5), value: p.requests }))}
@@ -96,11 +99,11 @@ export default function Dashboard({ lang }: { lang: Lang }) {
           loading={firstSeries}
           fmt={(v) => v.toFixed(2)}
         />
-      </div>
+      </CardRow>
 
       {/* Provider health */}
       <h1 className="section-title">{t("providerHealth", lang)}</h1>
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -128,9 +131,7 @@ export default function Dashboard({ lang }: { lang: Lang }) {
                     <span className={`dot ${p.state}`} />{t(`breaker_${p.state}`, lang)}
                   </td>
                   <td>
-                    <span className={`pill ${p.isEnabled ? "on" : "off"}`}>
-                      {t(p.isEnabled ? "enabled" : "disabled", lang)}
-                    </span>
+                    <Pill tone={p.isEnabled ? "on" : "off"}>{t(p.isEnabled ? "enabled" : "disabled", lang)}</Pill>
                   </td>
                   <td className="num mono">{p.weight}</td>
                   <td className="num mono">{p.priority}</td>
@@ -139,7 +140,7 @@ export default function Dashboard({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

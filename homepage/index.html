@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F6F1E7" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="ai-gateway — a self-hosted, OpenAI-compatible AI traffic control plane: virtual keys, routing and failover, guardrails, and balance-based billing, behind one endpoint you run yourself." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <title>ai-gateway — one endpoint for every AI model</title>
+  </head>
+  <body>
+    <div class="hp">
+      <nav class="hp-nav">
+        <div class="hp-brand">
+          <svg width="22" height="17" viewBox="0 0 64 48" aria-hidden="true">
+            <line x1="4" y1="24" x2="20" y2="24" stroke="#221C13" stroke-width="5.5" stroke-linecap="round" />
+            <line x1="44" y1="8" x2="60" y2="8" stroke="#221C13" stroke-width="5.5" stroke-linecap="round" opacity=".25" />
+            <line x1="44" y1="40" x2="60" y2="40" stroke="#221C13" stroke-width="5.5" stroke-linecap="round" opacity=".25" />
+            <path d="M20 24 L44 24" stroke="#221C13" stroke-width="5.5" stroke-linecap="round" fill="none" />
+            <line x1="44" y1="24" x2="60" y2="24" stroke="#221C13" stroke-width="5.5" stroke-linecap="round" />
+            <circle cx="32" cy="24" r="3.8" fill="#C8811F" />
+          </svg>
+          <span class="name">ai-gateway</span>
+        </div>
+        <div class="hp-nav-actions">
+          <button class="hp-lang" id="lang-toggle" type="button">中文</button>
+          <a class="hp-btn ghost sm" href="https://github.com/opscenter/ai-gateway" target="_blank" rel="noopener">GitHub</a>
+          <a class="hp-btn sm" href="/console/" data-i18n="ctaSignIn">Sign in to Console</a>
+        </div>
+      </nav>
+
+      <!-- HERO: "what is this?" -->
+      <header class="hp-hero">
+        <div class="hp-hero-copy">
+          <div class="eyebrow" data-i18n="eyebrow">Self-hosted · MIT-licensed · one Go binary</div>
+          <h1 data-i18n="heroTitle">Every AI request, routed, governed, and billed — behind one endpoint you run yourself</h1>
+          <p data-i18n="heroSub">Not a hosted proxy. Your keys, your database, your infrastructure — the gateway you'd otherwise have to build in front of every provider SDK.</p>
+          <div class="diff" data-i18n="heroDiff">Self-hosted &amp; open-source — unlike OpenRouter (hosted) or a bare LiteLLM proxy (no billing, no guardrails, no MCP)</div>
+          <div class="ctas">
+            <a class="hp-btn" href="/console/" data-i18n="ctaSignIn">Sign in to Console</a>
+            <a class="hp-btn ghost" href="https://github.com/opscenter/ai-gateway" target="_blank" rel="noopener" data-i18n="ctaGithub">View on GitHub</a>
+          </div>
+        </div>
+
+        <div class="pipe">
+          <div class="pipe-rail"></div>
+          <div class="pipe-signal"></div>
+          <div class="pipe-stage s1"><span class="box mono">POST /ai/v1/chat/completions</span></div>
+          <div class="pipe-stage s2"><span class="box mono" data-i18n="stagePolicy">Policy check</span></div>
+          <div class="pipe-stage s3"><span class="box mono" data-i18n="stageRate">Rate limit</span></div>
+          <div class="pipe-stage s4"><span class="box mono" data-i18n="stageCache">Cache</span></div>
+          <div class="pipe-stage route s5">
+            <span class="box">
+              <div class="route-carousel">
+                <span>&rarr; Claude Sonnet</span>
+                <span>&rarr; GPT-4o</span>
+                <span>&rarr; Gemini 2.5</span>
+                <span>&rarr; DeepSeek</span>
+                <span>&rarr; Local model</span>
+              </div>
+            </span>
+          </div>
+          <div class="pipe-stage s6"><span class="box mono">318ms</span></div>
+          <div class="pipe-stage s7"><span class="box mono" data-i18n="stageResponse">200 Response</span></div>
+        </div>
+      </header>
+
+      <div class="hp-hero-copy quickstart-wrap">
+        <div class="quickstart">
+          <div class="qtitle"><span data-i18n="quickstartLabel">Quick start</span></div>
+          <code><span class="cmt" data-i18n="quickstartComment"># running in under a minute</span>
+git clone github.com/opscenter/ai-gateway
+cd ai-gateway/deploy/compose &amp;&amp; docker compose up -d</code>
+        </div>
+      </div>
+
+      <!-- BEFORE / AFTER: "why do I need it?" -->
+      <section class="hp-transform">
+        <h2 data-i18n="transformTitle">Why teams put this in front of their AI traffic</h2>
+        <div class="ba-row">
+          <div class="ba-col before">
+            <div class="h" data-i18n="beforeLabel">Before</div>
+            <ul>
+              <li data-i18n="before1">A different SDK per provider</li>
+              <li data-i18n="before2">A key to leak per provider</li>
+              <li data-i18n="before3">No shared view of what's being spent, or where</li>
+              <li data-i18n="before4">Someone pages you when a provider degrades</li>
+              <li data-i18n="before5">Cost tracking lives in five different dashboards</li>
+            </ul>
+          </div>
+          <div class="ba-arrow" aria-hidden="true">
+            <svg width="40" height="20" viewBox="0 0 40 20">
+              <line x1="2" y1="10" x2="34" y2="10" stroke="#8f8371" stroke-width="1.5" />
+              <path d="M28 4 L36 10 L28 16" stroke="#8f8371" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <circle r="3" fill="#C8811F"><animateMotion dur="1.8s" repeatCount="indefinite" path="M2 10 L34 10" /></circle>
+            </svg>
+          </div>
+          <div class="ba-col after">
+            <div class="h" data-i18n="afterLabel">After</div>
+            <ul>
+              <li data-i18n="after1">One OpenAI-compatible endpoint</li>
+              <li data-i18n="after2">One scoped, revocable virtual key</li>
+              <li data-i18n="after3">Every request logged, traced, and billed</li>
+              <li data-i18n="after4">Circuit breakers fail over automatically</li>
+              <li data-i18n="after5">One ledger, one price table, one currency view</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- OUTCOMES: elaborates "why" -->
+      <section class="hp-outcomes">
+        <h2 data-i18n="outcomesTitle">What that actually buys you</h2>
+        <div class="sub" data-i18n="outcomesSub">Every line below is a shipped, tested behavior — not a roadmap item</div>
+        <div class="out-grid">
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" /></svg></span>
+            <p data-i18n="outcome1">Automatically routes to the best available provider — and away from a failing one.</p>
+          </div>
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="16" r="4" /><path d="M10.8 13.2 20 4" /><path d="M16 4h4v4" /></svg></span>
+            <p data-i18n="outcome2">Your application never sees a real provider credential — only a scoped virtual key.</p>
+          </div>
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3.5 6h.01" /><path d="M3.5 12h.01" /><path d="M3.5 18h.01" /></svg></span>
+            <p data-i18n="outcome3">Every request is traceable end to end — model, provider, latency, cost, and outcome.</p>
+          </div>
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg></span>
+            <p data-i18n="outcome4">You see cost building up in real time, before it becomes a surprise invoice.</p>
+          </div>
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.9l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0z" /></svg></span>
+            <p data-i18n="outcome5">Sensitive data gets blocked or redacted before it ever leaves your network.</p>
+          </div>
+          <div class="out-card">
+            <span class="chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+            <p data-i18n="outcome6">Swap providers or models without touching a line of application code.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- INTERACTIVE PLAYGROUND: "how does it work?" -->
+      <section class="hp-play">
+        <h2 data-i18n="playTitle">Pick a strategy. Watch it route.</h2>
+        <div class="sub" data-i18n="playSub">This is the actual decision the gateway makes on every request</div>
+        <div class="play-strategies">
+          <button class="strat-btn active" data-target="0" data-i18n="stratCheapest" type="button">Cheapest</button>
+          <button class="strat-btn" data-target="1" data-i18n="stratFastest" type="button">Fastest</button>
+          <button class="strat-btn" data-target="2" data-i18n="stratPriority" type="button">My priority order</button>
+          <button class="strat-btn" data-target="3" data-i18n="stratWeighted" type="button">Weighted split</button>
+        </div>
+        <div class="play-diagram">
+          <svg viewBox="0 0 600 150" aria-hidden="true">
+            <path class="play-path" id="pp-0" d="M60 75 L300 75 L520 30" />
+            <path class="play-path" id="pp-1" d="M60 75 L300 75 L520 75" />
+            <path class="play-path" id="pp-2" d="M60 75 L300 75 L520 120" />
+            <rect class="play-node" x="24" y="61" width="40" height="28" rx="7" />
+            <text class="play-label" x="44" y="105" text-anchor="middle" data-i18n="playYourApp">your app</text>
+            <circle cx="300" cy="75" r="5" fill="#221C13" />
+            <rect class="play-node" id="pn-0" x="520" y="16" width="60" height="28" rx="7" />
+            <text class="play-label" id="pl-0" x="550" y="60" text-anchor="middle">DeepSeek</text>
+            <rect class="play-node" id="pn-1" x="520" y="61" width="60" height="28" rx="7" />
+            <text class="play-label" id="pl-1" x="550" y="105" text-anchor="middle">Claude Sonnet</text>
+            <rect class="play-node" id="pn-2" x="520" y="106" width="60" height="28" rx="7" />
+            <text class="play-label" id="pl-2" x="550" y="150" text-anchor="middle">GPT-5</text>
+            <circle class="play-dot" id="pd-0" r="4" style="offset-path: path('M60 75 L300 75 L520 30')" />
+            <circle class="play-dot" id="pd-1" r="4" style="offset-path: path('M60 75 L300 75 L520 75')" />
+            <circle class="play-dot" id="pd-2" r="4" style="offset-path: path('M60 75 L300 75 L520 120')" />
+          </svg>
+        </div>
+        <div class="play-caption" id="play-caption"></div>
+      </section>
+
+      <!-- CONSOLE MOCK: "what will I get?" -->
+      <section class="hp-shot">
+        <h2 data-i18n="shotTitle">The console you'll actually operate in</h2>
+        <div class="sub" data-i18n="shotSub">Live numbers, not a static screenshot</div>
+        <div class="shot-frame">
+          <div class="bar"><span class="dot3"></span><span class="dot3"></span><span class="dot3"></span><span class="live"><span class="b"></span><span data-i18n="live">live</span></span></div>
+          <div class="shot-stats">
+            <div class="shot-stat"><div class="l" data-i18n="statReq">Requests today</div><div class="v" id="stat-req">48,206</div></div>
+            <div class="shot-stat"><div class="l" data-i18n="statLat">Avg latency</div><div class="v" id="stat-lat">412ms</div></div>
+            <div class="shot-stat"><div class="l" data-i18n="statCost">Cost today</div><div class="v" id="stat-cost">$1,208.40</div></div>
+            <div class="shot-stat"><div class="l" data-i18n="statThr">Throughput</div><div class="v" id="stat-thr">86 req/s</div></div>
+          </div>
+          <div class="shot-body">
+            <div class="shot-bars">
+              <div class="t" data-i18n="distTitle">Provider distribution</div>
+              <div class="pbar-row"><span class="n mono">openai</span><div class="pbar-track"><div class="pbar-fill" id="bar-0" style="width: 52%"></div></div></div>
+              <div class="pbar-row"><span class="n mono">anthropic</span><div class="pbar-track"><div class="pbar-fill" id="bar-1" style="width: 33%"></div></div></div>
+              <div class="pbar-row"><span class="n mono">bedrock</span><div class="pbar-track"><div class="pbar-fill" id="bar-2" style="width: 15%"></div></div></div>
+            </div>
+            <div class="shot-table">
+              <div class="scroller" id="shot-scroller"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROOF: "can I trust it?" -->
+      <section class="hp-proof">
+        <h2 data-i18n="proofTitle">What's actually in the codebase</h2>
+        <div class="sub" data-i18n="proofSub">Real counts, checked against this repo — not marketing round numbers</div>
+        <div class="proof-grid">
+          <div class="proof-item"><div class="v">5</div><div class="l" data-i18n="proof1">outbound dialects incl.<br />5 Bedrock model families</div></div>
+          <div class="proof-item"><div class="v">4</div><div class="l" data-i18n="proof2">inbound API surfaces<br />(Chat / Anthropic / Responses / MCP)</div></div>
+          <div class="proof-item"><div class="v">4</div><div class="l" data-i18n="proof3">routing strategies</div></div>
+          <div class="proof-item"><div class="v">3</div><div class="l" data-i18n="proof4">DB backends<br />MySQL · Postgres · SQLite</div></div>
+          <div class="proof-item"><div class="v">MIT</div><div class="l" data-i18n="proof5">license, self-hosted</div></div>
+          <div class="proof-item"><div class="v">1</div><div class="l" data-i18n="proof6">Go binary to deploy</div></div>
+        </div>
+      </section>
+
+      <section class="hp-eco">
+        <div class="eco-row">
+          <div class="eco-pill">OpenAI SDK</div>
+          <div class="eco-pill">Anthropic Messages API</div>
+          <div class="eco-pill">LangChain</div>
+          <div class="eco-pill">LlamaIndex</div>
+          <div class="eco-pill">Model Context Protocol</div>
+        </div>
+      </section>
+
+      <!-- CTA: "how do I start?" -->
+      <section class="hp-cta">
+        <h2 data-i18n="ctaTitle">Point your app at it. See what it's doing. Trust the routing.</h2>
+        <p data-i18n="ctaSub">Self-hosted means you can read every line that touches your traffic.</p>
+        <div class="ctas">
+          <a class="hp-btn" href="/console/" data-i18n="ctaSignIn">Sign in to Console</a>
+          <a class="hp-btn ghost" href="https://github.com/opscenter/ai-gateway" target="_blank" rel="noopener" data-i18n="ctaDocs">Read the docs on GitHub</a>
+        </div>
+      </section>
+
+      <footer class="hp-footer">
+        <span data-i18n="footerTag">ai-gateway · self-hosted AI traffic control plane · MIT license</span>
+        <a href="https://github.com/opscenter/ai-gateway" target="_blank" rel="noopener">github.com/opscenter/ai-gateway</a>
+      </footer>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

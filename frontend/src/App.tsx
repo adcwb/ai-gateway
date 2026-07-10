@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { api, clearToken, getToken } from "./api/client";
 import { getLang, setLang, t, type Lang } from "./i18n";
-import { Icon, type IconName } from "./components/ui";
+import { BrandMark, Icon, type IconName } from "./components/ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Keys from "./pages/Keys";
@@ -80,7 +80,7 @@ export default function App() {
     <div className="layout">
       <nav className="sidebar" aria-label="Primary">
         <div className="brand">
-          <Icon name="torii" size={22} className="brand-mark" />
+          <BrandMark size={22} className="brand-mark" />
           <div>
             <div className="brand-name">ai-gateway</div>
             <div className="brand-sub">Console</div>

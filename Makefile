@@ -8,9 +8,11 @@ backend:                       ## build the Go server (backend/server)
 web:                           ## build the web console (frontend/dist)
 	cd frontend && npm install && npm run build
 
-embed:                         ## copy console build into the Go embed dir
+embed:                         ## copy console build + static homepage into the Go embed dirs
 	rm -rf backend/internal/console/dist
 	cp -r frontend/dist backend/internal/console/dist
+	rm -rf backend/internal/homepage/dist
+	cp -r homepage backend/internal/homepage/dist
 
 test:                          ## run backend tests
 	cd backend && go test ./...

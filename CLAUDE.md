@@ -11,6 +11,7 @@ This file provides repo-wide guidance for Claude Code. Directory-specific guidan
 ```text
 ├── backend/    # Go gateway (module github.com/opscenter/ai-gateway) — see backend/CLAUDE.md
 ├── frontend/   # React+TS web console (Vite) — see frontend/CLAUDE.md
+├── homepage/   # public marketing page, plain HTML/CSS/JS, no build step — served at "/" (embedded via backend/internal/homepage)
 ├── docs/       # Product & design suite, EN authoritative + docs/zh-CN mirror
 │   ├── 01-product-vision.md · 02-gap-analysis.md · 03-roadmap.md (P0–P3, exit criteria)
 │   └── design/01..10-*.md   # per-capability designs, ADR style
@@ -58,6 +59,7 @@ Maturity: ✅ implemented + tested · 🟡 partial · 🔴 designed only (see th
 | Protocol adapters | ✅ | outbound anthropic + gemini + azure_openai + bedrock (5 model families: Claude/Titan/Llama/Mistral/Nova, SigV4) ✅; inbound OpenAI Chat + Anthropic Messages (`/anthropic/v1/messages`) + Responses API (`/ai/v1/responses`, incl. `previous_response_id`/`store` via server-side conversation state) ✅, all with full SSE streaming translation (D02). Tool-calling/multimodal for the 4 new Bedrock families, console UI for bedrock credentials/`adapter_config` remain 🔴 |
 | Exact + semantic response cache + hit billing | ✅ | `VectorIndex` interface + Redis (RediSearch) impl with dynamic capability-detection auto-degrade, embeddings generated through the gateway's own outbound dialect code (D07); cache-flush admin endpoint (TTL is the only invalidation today); console UI for per-key cache config + gateway-wide embedding settings ✅ (D08); streaming responses are not cached (by design, revisit) |
 | Web console | ✅ | key/provider/model-pricing management, usage timeseries page, audit body/session/security views, settings (incl. semantic-cache embedding config), users & admin keys, SSO login, Playwright E2E ✅ (D04/D08); Model Mappings page (per-key fallback-chain drag editor, `@dnd-kit`) + Guardrail Policies page (checker-chain builder) + per-key cache-config/PII-policy binding on Keys ✅ (D08) |
+| Public homepage | ✅ | `homepage/` — static HTML/CSS/JS (no React/build step), served at `/` via `backend/internal/homepage` (embed pattern mirrors `console/`); rail-switch brand mark (`BrandMark` in `ui.tsx`, replaced the old torii `Icon`), live routing-pipeline hero, interactive routing-strategy playground, en/zh toggle (`docs/superpowers/specs/2026-07-10-homepage-and-brand-mark-design.md`) |
 | Multi-DB (mysql/postgres/sqlite) | ✅ | CI includes a PostgreSQL+Redis boot smoke job |
 | Deployment | ✅ | compose + Helm chart + `doctor`/`rekey` CLI (D10); K8s operator deferred by design |
 | Engineering | ✅ | tests+CI+release, `api/openapi.yaml`, coverage regression gate (target: 60% on biz), `sync-models` endpoint |

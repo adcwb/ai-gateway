@@ -27,7 +27,7 @@ import {
   type VirtualKey,
 } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Pill, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const emptyForm = {
   id: 0,
@@ -76,9 +76,9 @@ function FallbackRow({
   const fallbackModelPlaceholder = t("fallbackModelName", lang);
   return (
     <div ref={setNodeRef} style={style} className="flex gap-8 items-center">
-      <button type="button" className="ghost sm" {...attributes} {...listeners} style={{ cursor: "grab" }}>
+      <Button type="button" variant="ghost" size="sm" {...attributes} {...listeners} style={{ cursor: "grab" }}>
         <Icon name="drag" size={14} />
-      </button>
+      </Button>
       <select
         value={entry.providerId || 0}
         onChange={(e) => onChange(index, { ...entry, providerId: Number(e.target.value) })}
@@ -93,9 +93,9 @@ function FallbackRow({
         placeholder={fallbackModelPlaceholder}
         style={{ flex: 1 }}
       />
-      <button type="button" className="danger sm" onClick={() => onRemove(index)}>
+      <Button type="button" variant="danger" size="sm" onClick={() => onRemove(index)}>
         <Icon name="trash" size={13} />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -230,20 +230,20 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("modelMappings", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8">
-          <button className="ghost sm" onClick={() => mappingsQ.refresh()}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-          <button onClick={() => startEdit()} disabled={!selectedKeyId}>
-            <Icon name="plus" size={14} /> {t("addModelMapping", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("modelMappings", lang)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => mappingsQ.refresh()}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button onClick={() => startEdit()} disabled={!selectedKeyId}>
+              <Icon name="plus" size={14} /> {t("addModelMapping", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -255,21 +255,20 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
         />
       )}
 
-      <div className="card mb-16">
-        <label className="field">
-          <div className="field-label">{t("selectVirtualKey", lang)}</div>
+      <Card className="mb-16">
+        <Field label={t("selectVirtualKey", lang)}>
           <select value={selectedKeyId} onChange={(e) => setSelectedKeyId(Number(e.target.value))}>
             {keys.length === 0 && <option value={0}>—</option>}
             {keys.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
           </select>
-        </label>
-      </div>
+        </Field>
+      </Card>
 
       {showForm && (
-        <form className="card mb-16" onSubmit={submit}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("virtualModelName", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={submit}>
+          <FormGrid>
+            <Field label={t("virtualModelName", lang)}>
               <input
                 value={form.virtualModel}
                 onChange={(e) => setForm({ ...form, virtualModel: e.target.value })}
@@ -277,15 +276,13 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                 autoFocus
                 placeholder="gpt-4"
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("modelType", lang)}</div>
+            </Field>
+            <Field label={t("modelType", lang)}>
               <select value={modalityFilter} onChange={(e) => changeModalityFilter(e.target.value)}>
                 {modelTypeOptions.map((mt) => <option key={mt} value={mt}>{t(modelTypeLabelKey[mt], lang)}</option>)}
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("realModel", lang)}</div>
+            </Field>
+            <Field label={t("realModel", lang)}>
               <select
                 value={form.realModelId}
                 onChange={(e) => setForm({ ...form, realModelId: Number(e.target.value) })}
@@ -300,15 +297,13 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                     </option>
                   ))}
               </select>
-            </label>
-            <label className="field span-2">
-              <div className="field-label">{t("description", lang)}</div>
+            </Field>
+            <Field span={2} label={t("description", lang)}>
               <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            </Field>
+            <Field row label={t("enabled", lang)}>
               <input type="checkbox" checked={form.isEnabled} onChange={(e) => setForm({ ...form, isEnabled: e.target.checked })} />
-              <div className="field-label" style={{ margin: 0 }}>{t("enabled", lang)}</div>
-            </label>
+            </Field>
 
             <div className="field span-3">
               <div className="field-label">{t("fallbackChain", lang)}</div>
@@ -330,20 +325,21 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                   </div>
                 </SortableContext>
               </DndContext>
-              <button type="button" className="ghost sm" style={{ marginTop: 8 }} onClick={addChainRow}>
+              <Button type="button" variant="ghost" size="sm" style={{ marginTop: 8 }} onClick={addChainRow}>
                 <Icon name="plus" size={13} /> {t("addFallbackStep", lang)}
-              </button>
+              </Button>
             </div>
 
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -365,9 +361,9 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                     sub={t("emptyModelMappingsSub", lang)}
                     action={
                       selectedKeyId ? (
-                        <button onClick={() => startEdit()}>
+                        <Button onClick={() => startEdit()}>
                           <Icon name="plus" size={14} /> {t("addModelMapping", lang)}
-                        </button>
+                        </Button>
                       ) : undefined
                     }
                   />
@@ -379,19 +375,19 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                   <td className="mono">{m.virtualModel}</td>
                   <td className="muted mono">{m.realModel?.name ?? m.realModelId}</td>
                   <td>
-                    <span className={`pill ${m.isEnabled ? "on" : "off"}`}>
+                    <Pill tone={m.isEnabled ? "on" : "off"}>
                       {t(m.isEnabled ? "enabled" : "disabled", lang)}
-                    </span>
+                    </Pill>
                   </td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => startEdit(m)}>{t("editProvider", lang)}</button>
-                      <button className="ghost sm" onClick={() => toggle(m)}>
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(m)}>{t("editProvider", lang)}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => toggle(m)}>
                         {t(m.isEnabled ? "disable" : "enable", lang)}
-                      </button>
-                      <button className="danger sm" onClick={() => remove(m)}>
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => remove(m)}>
                         <Icon name="trash" size={13} /> {t("deleteProvider", lang)}
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -399,7 +395,7 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

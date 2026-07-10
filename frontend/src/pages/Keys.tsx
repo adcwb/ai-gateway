@@ -14,7 +14,10 @@ import {
   type VirtualKey,
 } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Gauge, Icon, Modal, Skeleton, TableSkeleton } from "../components/ui";
+import {
+  Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Gauge, Icon, Modal, Pill, Skeleton, TableSkeleton,
+  TableWrap, Topbar,
+} from "../components/ui";
 
 export default function Keys({ lang }: { lang: Lang }) {
   const [showForm, setShowForm] = useState(false);
@@ -152,20 +155,20 @@ export default function Keys({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navOperate", lang)}</div>
-          <h1>{t("keys", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8">
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-          <button onClick={() => setShowForm((v) => !v)}>
-            <Icon name="plus" size={14} /> {t("createKey", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navOperate", lang)}
+        title={t("keys", lang)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button onClick={() => setShowForm((v) => !v)}>
+              <Icon name="plus" size={14} /> {t("createKey", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -178,99 +181,88 @@ export default function Keys({ lang }: { lang: Lang }) {
       )}
 
       {minted && (
-        <div className="card success mb-16">
+        <Card tone="success" className="mb-16">
           <div className="label">{minted.name} — {t("keyCreatedOnce", lang)}</div>
           <div className="flex gap-8 items-center" style={{ marginTop: 8 }}>
             <code className="code-block" style={{ flex: 1 }}>{minted.plainKey}</code>
-            <button className="ghost sm" onClick={() => copyKey(minted.plainKey)}>
+            <Button variant="ghost" size="sm" onClick={() => copyKey(minted.plainKey)}>
               <Icon name={copied ? "check" : "copy"} size={14} /> {copied ? t("copied", lang) : t("copy", lang)}
-            </button>
-            <button className="ghost sm" onClick={() => setMinted(null)}>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setMinted(null)}>
               <Icon name="close" size={14} /> {t("close", lang)}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {showForm && (
-        <form className="card mb-16" onSubmit={create}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("name", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={create}>
+          <FormGrid>
+            <Field label={t("name", lang)}>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("provider", lang)}</div>
+            </Field>
+            <Field label={t("provider", lang)}>
               <select value={form.providerId} onChange={(e) => setForm({ ...form, providerId: Number(e.target.value) })}>
                 {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("tenant", lang)}</div>
+            </Field>
+            <Field label={t("tenant", lang)}>
               <select value={form.tenantId} onChange={(e) => setForm({ ...form, tenantId: Number(e.target.value) })}>
                 {tenants.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("dailyTokens", lang)}</div>
+            </Field>
+            <Field label={t("dailyTokens", lang)}>
               <input
                 type="number"
                 min="0"
                 value={form.dailyTokenQuota || ""}
                 onChange={(e) => setForm({ ...form, dailyTokenQuota: Number(e.target.value) || 0 })}
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("routingStrategy", lang)}</div>
+            </Field>
+            <Field label={t("routingStrategy", lang)}>
               <select value={form.routingStrategy} onChange={(e) => setForm({ ...form, routingStrategy: e.target.value })}>
                 <option value="">weighted</option>
                 <option value="priority">priority</option>
                 <option value="least_latency">least_latency</option>
                 <option value="least_cost">least_cost</option>
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("hourlyToolCallQuota", lang)}</div>
+            </Field>
+            <Field label={t("hourlyToolCallQuota", lang)}>
               <input
                 type="number"
                 min="0"
                 value={form.hourlyToolCallQuota || ""}
                 onChange={(e) => setForm({ ...form, hourlyToolCallQuota: Number(e.target.value) || 0 })}
               />
-            </label>
-            <label className="field span-2">
-              <div className="field-label">{t("toolWhitelistCsv", lang)}</div>
+            </Field>
+            <Field span={2} label={t("toolWhitelistCsv", lang)}>
               <input
                 value={form.toolWhitelistCsv}
                 onChange={(e) => setForm({ ...form, toolWhitelistCsv: e.target.value })}
                 placeholder={t("toolWhitelistHint", lang)}
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("guardrailPolicy", lang)}</div>
+            </Field>
+            <Field label={t("guardrailPolicy", lang)}>
               <select value={form.piiPolicyId} onChange={(e) => setForm({ ...form, piiPolicyId: Number(e.target.value) })}>
                 <option value={0}>{t("useDefaultPolicy", lang)}</option>
                 {piiPolicies.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-            </label>
+            </Field>
 
             <div className="field span-3">
               <div className="field-label">{t("cacheConfig", lang)}</div>
-              <div className="form-grid" style={{ marginTop: 4 }}>
-                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <FormGrid style={{ marginTop: 4 }}>
+                <Field row label={t("exactCacheEnabled", lang)}>
                   <input type="checkbox" checked={form.exactEnabled} onChange={(e) => setForm({ ...form, exactEnabled: e.target.checked })} />
-                  <div className="field-label" style={{ margin: 0 }}>{t("exactCacheEnabled", lang)}</div>
-                </label>
-                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                </Field>
+                <Field row label={t("semanticCacheEnabled", lang)}>
                   <input type="checkbox" checked={form.semanticEnabled} onChange={(e) => setForm({ ...form, semanticEnabled: e.target.checked })} />
-                  <div className="field-label" style={{ margin: 0 }}>{t("semanticCacheEnabled", lang)}</div>
-                </label>
-                <label className="field">
-                  <div className="field-label">{t("cacheTtlSec", lang)}</div>
+                </Field>
+                <Field label={t("cacheTtlSec", lang)}>
                   <input type="number" min="0" value={form.ttlSec} onChange={(e) => setForm({ ...form, ttlSec: Number(e.target.value) || 0 })} />
-                </label>
-                <label className="field">
-                  <div className="field-label">{t("semanticThreshold", lang)}</div>
+                </Field>
+                <Field label={t("semanticThreshold", lang)}>
                   <input
                     type="number"
                     min="0"
@@ -279,13 +271,11 @@ export default function Keys({ lang }: { lang: Lang }) {
                     value={form.semanticThreshold}
                     onChange={(e) => setForm({ ...form, semanticThreshold: Number(e.target.value) || 0 })}
                   />
-                </label>
-                <label className="field">
-                  <div className="field-label">{t("semanticCacheTtlSec", lang)}</div>
+                </Field>
+                <Field label={t("semanticCacheTtlSec", lang)}>
                   <input type="number" min="0" value={form.semanticTtlSec} onChange={(e) => setForm({ ...form, semanticTtlSec: Number(e.target.value) || 0 })} />
-                </label>
-                <label className="field">
-                  <div className="field-label">{t("cacheBillingPolicy", lang)}</div>
+                </Field>
+                <Field label={t("cacheBillingPolicy", lang)}>
                   <select
                     value={form.billingPolicy}
                     onChange={(e) => setForm({ ...form, billingPolicy: e.target.value as typeof form.billingPolicy })}
@@ -294,10 +284,9 @@ export default function Keys({ lang }: { lang: Lang }) {
                     <option value="discount">discount</option>
                     <option value="full">full</option>
                   </select>
-                </label>
+                </Field>
                 {form.billingPolicy === "discount" && (
-                  <label className="field">
-                    <div className="field-label">{t("cacheDiscountPercent", lang)}</div>
+                  <Field label={t("cacheDiscountPercent", lang)}>
                     <input
                       type="number"
                       min="0"
@@ -305,20 +294,21 @@ export default function Keys({ lang }: { lang: Lang }) {
                       value={form.discountPercent}
                       onChange={(e) => setForm({ ...form, discountPercent: Number(e.target.value) || 0 })}
                     />
-                  </label>
+                  </Field>
                 )}
-              </div>
+              </FormGrid>
             </div>
 
             <div className="form-actions">
-              <button type="submit"><Icon name="plus" size={14} /> {t("submit", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="plus" size={14} /> {t("submit", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -340,9 +330,9 @@ export default function Keys({ lang }: { lang: Lang }) {
                     title={t("emptyKeys", lang)}
                     sub={t("emptyKeysSub", lang)}
                     action={
-                      <button onClick={() => setShowForm(true)}>
+                      <Button onClick={() => setShowForm(true)}>
                         <Icon name="plus" size={14} /> {t("createKey", lang)}
-                      </button>
+                      </Button>
                     }
                   />
                 </td>
@@ -354,31 +344,31 @@ export default function Keys({ lang }: { lang: Lang }) {
                   <td>
                     {k.name}
                     {revealed[k.id] && (
-                      <div className="mono break-all" style={{ fontSize: 12, marginTop: 2, color: "var(--accent)" }}>
+                      <div className="mono break-all" style={{ fontSize: 12, marginTop: 2, color: "var(--warn-text)" }}>
                         {revealed[k.id]}
                       </div>
                     )}
                   </td>
                   <td>
-                    <span className={`pill ${k.isEnabled ? "on" : "off"}`}>
+                    <Pill tone={k.isEnabled ? "on" : "off"}>
                       {t(k.isEnabled ? "enabled" : "disabled", lang)}
-                    </span>
+                    </Pill>
                   </td>
                   <td className="muted mono">{k.expiresAt ? new Date(k.expiresAt).toLocaleString() : t("never", lang)}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => toggle(k)}>
+                      <Button variant="ghost" size="sm" onClick={() => toggle(k)}>
                         {t(k.isEnabled ? "disable" : "enable", lang)}
-                      </button>
-                      <button className="ghost sm" onClick={() => setQuotaKeyId(k.id)}>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setQuotaKeyId(k.id)}>
                         <Icon name="dashboard" size={13} /> {t("quotas", lang)}
-                      </button>
-                      <button className="ghost sm" onClick={() => reveal(k)}>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => reveal(k)}>
                         <Icon name="eye" size={13} /> {t("reveal", lang)}
-                      </button>
-                      <button className="danger sm" onClick={() => revoke(k)}>
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => revoke(k)}>
                         <Icon name="trash" size={13} /> {t("revoke", lang)}
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -386,7 +376,7 @@ export default function Keys({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
 
       {quotaKeyId != null && (
         <QuotaModal keyId={quotaKeyId} lang={lang} onClose={() => setQuotaKeyId(null)} />
@@ -486,27 +476,25 @@ function QuotaModal({ keyId, lang, onClose }: { keyId: number; lang: Lang; onClo
   };
 
   const numField = (labelKey: string, key: GlobalQuotaField, value: number) => (
-    <label className="field" key={key}>
-      <div className="field-label">{t(labelKey, lang)}</div>
+    <Field label={t(labelKey, lang)} key={key}>
       <input
         type="number"
         min="0"
         value={value || ""}
         onChange={(e) => updateField(key, Number(e.target.value) || 0)}
       />
-    </label>
+    </Field>
   );
 
   const modelNumField = (labelKey: string, key: ModelQuotaField, idx: number, value: number) => (
-    <label className="field" key={key}>
-      <div className="field-label">{t(labelKey, lang)}</div>
+    <Field label={t(labelKey, lang)} key={key}>
       <input
         type="number"
         min="0"
         value={value || ""}
         onChange={(e) => updateModelQuota(idx, { [key]: Number(e.target.value) || 0 })}
       />
-    </label>
+    </Field>
   );
 
   return (
@@ -528,48 +516,46 @@ function QuotaModal({ keyId, lang, onClose }: { keyId: number; lang: Lang; onClo
           <Gauge label={t("hourlyPointQuota", lang)} used={usage.hourlyPointUsed} quota={usage.hourlyPointQuota} unlimitedLabel={t("unlimited", lang)} />
 
           <h1 className="section-title">{t("globalQuotas", lang)}</h1>
-          <div className="form-grid">
+          <FormGrid>
             {numField("dailyTokenQuota", "dailyTokenQuota", config.dailyTokenQuota)}
             {numField("hourlyTokenQuota", "hourlyTokenQuota", config.hourlyTokenQuota)}
             {numField("hourlyReqQuota", "hourlyReqQuota", config.hourlyReqQuota)}
             {numField("maxConcurrency", "maxConcurrency", config.maxConcurrency)}
             {numField("dailyPointQuota", "dailyPointQuota", config.dailyPointQuota)}
             {numField("hourlyPointQuota", "hourlyPointQuota", config.hourlyPointQuota)}
-          </div>
+          </FormGrid>
 
           <h1 className="section-title">{t("perModelQuotas", lang)}</h1>
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>{t("perModelQuotasHint", lang)}</div>
           {config.modelQuotas.map((m, idx) => (
-            <div
-              className="form-grid"
+            <FormGrid
               key={idx}
               style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}
             >
-              <label className="field">
-                <div className="field-label">{t("modelName", lang)}</div>
+              <Field label={t("modelName", lang)}>
                 <input value={m.modelName} onChange={(e) => updateModelQuota(idx, { modelName: e.target.value })} />
-              </label>
+              </Field>
               {modelNumField("dailyTokenQuota", "dailyTokenQuota", idx, m.dailyTokenQuota)}
               {modelNumField("hourlyTokenQuota", "hourlyTokenQuota", idx, m.hourlyTokenQuota)}
               {modelNumField("hourlyReqQuota", "hourlyReqQuota", idx, m.hourlyReqQuota)}
               {modelNumField("dailyPointQuota", "dailyPointQuota", idx, m.dailyPointQuota)}
               {modelNumField("hourlyPointQuota", "hourlyPointQuota", idx, m.hourlyPointQuota)}
               <div className="form-actions">
-                <button type="button" className="danger sm" onClick={() => removeModelQuota(idx)}>
+                <Button type="button" variant="danger" size="sm" onClick={() => removeModelQuota(idx)}>
                   <Icon name="trash" size={13} /> {t("removeRow", lang)}
-                </button>
+                </Button>
               </div>
-            </div>
+            </FormGrid>
           ))}
-          <button type="button" className="ghost sm" onClick={addModelQuota} style={{ marginBottom: 18 }}>
+          <Button type="button" variant="ghost" size="sm" onClick={addModelQuota} style={{ marginBottom: 18 }}>
             <Icon name="plus" size={13} /> {t("addModelQuota", lang)}
-          </button>
+          </Button>
 
           {saveError && <ErrorBanner message={saveError} />}
           <div className="form-actions">
-            <button type="button" onClick={save} disabled={saving}>
+            <Button type="button" onClick={save} disabled={saving}>
               <Icon name="check" size={14} /> {t("saveQuotas", lang)}
-            </button>
+            </Button>
           </div>
         </>
       ) : null}

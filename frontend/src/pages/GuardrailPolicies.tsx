@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, useAsync, type CheckerConfig, type PIIPolicy } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Pill, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const DETECTORS = ["cn_id_card", "cn_mobile", "bank_card", "email", "ipv4", "api_secret"] as const;
 const CHECKER_KINDS: CheckerConfig["name"][] = ["pii_rules", "prompt_injection", "topic_fence", "external"];
@@ -43,12 +43,12 @@ function CheckerCard({
   const settings = (checker.settings ?? {}) as Record<string, unknown>;
 
   return (
-    <div className="card" style={{ marginBottom: 8 }}>
+    <Card style={{ marginBottom: 8 }}>
       <div className="flex items-center gap-8" style={{ justifyContent: "space-between" }}>
-        <span className="pill info">{checker.name}</span>
-        <button type="button" className="danger sm" onClick={onRemove}>
+        <Pill tone="info">{checker.name}</Pill>
+        <Button type="button" variant="danger" size="sm" onClick={onRemove}>
           <Icon name="trash" size={13} /> {t("removeChecker", lang)}
-        </button>
+        </Button>
       </div>
 
       {checker.name === "pii_rules" && (
@@ -86,8 +86,7 @@ function CheckerCard({
       {checker.name === "prompt_injection" && <div className="sub" style={{ marginTop: 8 }}>{t("promptInjectionHint", lang)}</div>}
 
       {checker.name === "topic_fence" && (
-        <label className="field" style={{ marginTop: 8 }}>
-          <div className="field-label">{t("blockedTopicsCsv", lang)}</div>
+        <Field label={t("blockedTopicsCsv", lang)} style={{ marginTop: 8 }}>
           <input
             value={((settings.blockedTopics as string[]) ?? []).join(", ")}
             onChange={(e) =>
@@ -98,31 +97,29 @@ function CheckerCard({
             }
             placeholder={t("blockedTopicsHint", lang)}
           />
-        </label>
+        </Field>
       )}
 
       {checker.name === "external" && (
-        <div className="form-grid" style={{ marginTop: 8 }}>
-          <label className="field">
-            <div className="field-label">{t("externalTarget", lang)}</div>
+        <FormGrid style={{ marginTop: 8 }}>
+          <Field label={t("externalTarget", lang)}>
             <input
               value={(settings.target as string) ?? ""}
               onChange={(e) => onChange({ ...checker, settings: { ...settings, target: e.target.value } })}
               placeholder="127.0.0.1:9090"
             />
-          </label>
-          <label className="field">
-            <div className="field-label">{t("externalTimeoutMs", lang)}</div>
+          </Field>
+          <Field label={t("externalTimeoutMs", lang)}>
             <input
               type="number"
               min="1"
               value={(settings.timeoutMs as number) ?? 1000}
               onChange={(e) => onChange({ ...checker, settings: { ...settings, timeoutMs: Number(e.target.value) || 1000 } })}
             />
-          </label>
-        </div>
+          </Field>
+        </FormGrid>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -211,20 +208,20 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("guardrailPolicies", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8">
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-          <button onClick={() => startEdit()}>
-            <Icon name="plus" size={14} /> {t("addGuardrailPolicy", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("guardrailPolicies", lang)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button onClick={() => startEdit()}>
+              <Icon name="plus" size={14} /> {t("addGuardrailPolicy", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -237,39 +234,34 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
       )}
 
       {showForm && (
-        <form className="card mb-16" onSubmit={submit}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("name", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={submit}>
+          <FormGrid>
+            <Field label={t("name", lang)}>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("guardrailAction", lang)}</div>
+            </Field>
+            <Field label={t("guardrailAction", lang)}>
               <select value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as PIIPolicy["action"] })}>
                 <option value="block">block</option>
                 <option value="redact">redact</option>
                 <option value="log">log</option>
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("failMode", lang)}</div>
+            </Field>
+            <Field label={t("failMode", lang)}>
               <select value={form.failMode} onChange={(e) => setForm({ ...form, failMode: e.target.value as PIIPolicy["failMode"] })}>
                 <option value="open">open</option>
                 <option value="closed">closed</option>
               </select>
-            </label>
-            <label className="field span-2">
-              <div className="field-label">{t("description", lang)}</div>
+            </Field>
+            <Field span={2} label={t("description", lang)}>
               <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            </Field>
+            <Field row label={t("enabled", lang)}>
               <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-              <div className="field-label" style={{ margin: 0 }}>{t("enabled", lang)}</div>
-            </label>
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            </Field>
+            <Field row label={t("isDefaultPolicy", lang)}>
               <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
-              <div className="field-label" style={{ margin: 0 }}>{t("isDefaultPolicy", lang)}</div>
-            </label>
+            </Field>
 
             <div className="field span-3">
               <div className="field-label">{t("checkerChain", lang)}</div>
@@ -281,21 +273,22 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
                 <select value={addKind} onChange={(e) => setAddKind(e.target.value as CheckerConfig["name"])}>
                   {CHECKER_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
                 </select>
-                <button type="button" className="ghost sm" onClick={addChecker}>
+                <Button type="button" variant="ghost" size="sm" onClick={addChecker}>
                   <Icon name="plus" size={13} /> {t("addChecker", lang)}
-                </button>
+                </Button>
               </div>
             </div>
 
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -318,9 +311,9 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
                     title={t("emptyGuardrailPolicies", lang)}
                     sub={t("emptyGuardrailPoliciesSub", lang)}
                     action={
-                      <button onClick={() => startEdit()}>
+                      <Button onClick={() => startEdit()}>
                         <Icon name="plus" size={14} /> {t("addGuardrailPolicy", lang)}
-                      </button>
+                      </Button>
                     }
                   />
                 </td>
@@ -331,17 +324,17 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
                   <td>{p.name}</td>
                   <td className="mono">{p.action}</td>
                   <td>
-                    <span className={`pill ${p.enabled ? "on" : "off"}`}>{t(p.enabled ? "enabled" : "disabled", lang)}</span>
+                    <Pill tone={p.enabled ? "on" : "off"}>{t(p.enabled ? "enabled" : "disabled", lang)}</Pill>
                   </td>
-                  <td>{p.isDefault ? <span className="pill info">{t("isDefaultPolicy", lang)}</span> : "—"}</td>
+                  <td>{p.isDefault ? <Pill tone="info">{t("isDefaultPolicy", lang)}</Pill> : "—"}</td>
                   <td className="num mono">{p.boundKeyCount}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => startEdit(p)}>{t("editProvider", lang)}</button>
-                      <button className="ghost sm" onClick={() => toggle(p)}>{t(p.enabled ? "disable" : "enable", lang)}</button>
-                      <button className="danger sm" onClick={() => remove(p)}>
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(p)}>{t("editProvider", lang)}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => toggle(p)}>{t(p.enabled ? "disable" : "enable", lang)}</Button>
+                      <Button variant="danger" size="sm" onClick={() => remove(p)}>
                         <Icon name="trash" size={13} /> {t("deleteProvider", lang)}
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -349,7 +342,7 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

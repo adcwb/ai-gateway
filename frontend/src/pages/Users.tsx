@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, useAsync, type AdminKey, type CreateAdminKeyResp, type Tenant, type UserItem } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Pill, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const ROLES = ["owner", "admin", "member", "viewer"];
 const emptyKeyForm = { name: "", tenantId: 0, role: "viewer" };
@@ -82,24 +82,24 @@ export default function Users({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("usersAccess", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8 items-center">
-          <select value={tenantId} onChange={(e) => setTenantId(Number(e.target.value))} style={{ width: "auto" }} aria-label={t("selectTenant", lang)}>
-            {tenants.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-          <button className="ghost sm" onClick={() => { usersQ.refresh(); keysQ.refresh(); }}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("usersAccess", lang)}
+        actions={
+          <>
+            <select value={tenantId} onChange={(e) => setTenantId(Number(e.target.value))} style={{ width: "auto" }} aria-label={t("selectTenant", lang)}>
+              {tenants.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+            <Button variant="ghost" size="sm" onClick={() => { usersQ.refresh(); keysQ.refresh(); }}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && <ErrorBanner message={showError} onRetry={() => { setActionError(""); usersQ.refresh(); keysQ.refresh(); }} />}
 
-      <div className="table-wrap mb-16">
+      <TableWrap className="mb-16">
         <table>
           <thead>
             <tr>
@@ -118,18 +118,18 @@ export default function Users({ lang }: { lang: Lang }) {
             ) : (
               users.map((u) => (
                 <tr key={u.id}>
-                  <td>{u.displayName || "—"} {u.isPlatformAdmin && <span className="pill info">{t("platformAdmin", lang)}</span>}</td>
+                  <td>{u.displayName || "—"} {u.isPlatformAdmin && <Pill tone="info">{t("platformAdmin", lang)}</Pill>}</td>
                   <td className="muted mono">{u.email}</td>
                   <td>
                     <select value={u.role} onChange={(e) => setRole(u, e.target.value)} disabled={u.isPlatformAdmin} style={{ width: "auto" }}>
                       {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </td>
-                  <td>{u.isEnabled ? <span className="pill on">{t("enabled", lang)}</span> : <span className="pill off">{t("disabled", lang)}</span>}</td>
+                  <td><Pill tone={u.isEnabled ? "on" : "off"}>{t(u.isEnabled ? "enabled" : "disabled", lang)}</Pill></td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => toggleEnabled(u)}>{u.isEnabled ? t("disable", lang) : t("enable", lang)}</button>
-                      <button className="danger sm" onClick={() => removeMember(u)}>{t("removeFromTenant", lang)}</button>
+                      <Button variant="ghost" size="sm" onClick={() => toggleEnabled(u)}>{u.isEnabled ? t("disable", lang) : t("enable", lang)}</Button>
+                      <Button variant="danger" size="sm" onClick={() => removeMember(u)}>{t("removeFromTenant", lang)}</Button>
                     </div>
                   </td>
                 </tr>
@@ -137,54 +137,53 @@ export default function Users({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
 
       <div className="topbar">
         <div className="titles"><h2 style={{ fontSize: 15, margin: 0 }}>{t("adminApiKeys", lang)}</h2></div>
         <div className="actions">
-          <button onClick={() => setShowKeyForm(true)}><Icon name="plus" size={14} /> {t("addAdminKey", lang)}</button>
+          <Button onClick={() => setShowKeyForm(true)}><Icon name="plus" size={14} /> {t("addAdminKey", lang)}</Button>
         </div>
       </div>
 
       {minted && (
-        <div className="card success mb-16">
+        <Card tone="success" className="mb-16">
           <div className="label">{minted.name} — {t("keyCreatedOnce", lang)}</div>
           <div className="flex gap-8 items-center" style={{ marginTop: 8 }}>
             <code className="code-block" style={{ flex: 1 }}>{minted.plainKey}</code>
-            <button className="ghost sm" onClick={() => setMinted(null)}><Icon name="close" size={14} /> {t("close", lang)}</button>
+            <Button variant="ghost" size="sm" onClick={() => setMinted(null)}><Icon name="close" size={14} /> {t("close", lang)}</Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {showKeyForm && (
-        <form className="card mb-16" onSubmit={createKey}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("name", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={createKey}>
+          <FormGrid>
+            <Field label={t("name", lang)}>
               <input value={keyForm.name} onChange={(e) => setKeyForm({ ...keyForm, name: e.target.value })} required autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("tenant", lang)}</div>
+            </Field>
+            <Field label={t("tenant", lang)}>
               <select value={keyForm.tenantId} onChange={(e) => setKeyForm({ ...keyForm, tenantId: Number(e.target.value) })}>
                 <option value={0}>{t("platformWide", lang)}</option>
                 {tenants.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
-            </label>
-            <label className="field">
-              <div className="field-label">{t("role", lang)}</div>
+            </Field>
+            <Field label={t("role", lang)}>
               <select value={keyForm.role} onChange={(e) => setKeyForm({ ...keyForm, role: e.target.value })}>
                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
-            </label>
+            </Field>
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowKeyForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowKeyForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -206,11 +205,11 @@ export default function Users({ lang }: { lang: Lang }) {
                   <td className="mono">{k.name} <span className="faint">({k.keyPrefix}…)</span></td>
                   <td className="muted">{k.tenantId === 0 ? t("platformWide", lang) : tenants.find((x) => x.id === k.tenantId)?.name ?? `#${k.tenantId}`}</td>
                   <td className="mono">{k.role}</td>
-                  <td>{k.isEnabled ? <span className="pill on">{t("enabled", lang)}</span> : <span className="pill off">{t("disabled", lang)}</span>}</td>
+                  <td><Pill tone={k.isEnabled ? "on" : "off"}>{t(k.isEnabled ? "enabled" : "disabled", lang)}</Pill></td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => toggleKey(k)}>{k.isEnabled ? t("disable", lang) : t("enable", lang)}</button>
-                      <button className="danger sm" onClick={() => deleteKey(k)}><Icon name="trash" size={13} /> {t("deleteProvider", lang)}</button>
+                      <Button variant="ghost" size="sm" onClick={() => toggleKey(k)}>{k.isEnabled ? t("disable", lang) : t("enable", lang)}</Button>
+                      <Button variant="danger" size="sm" onClick={() => deleteKey(k)}><Icon name="trash" size={13} /> {t("deleteProvider", lang)}</Button>
                     </div>
                   </td>
                 </tr>
@@ -218,7 +217,7 @@ export default function Users({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

@@ -4,7 +4,7 @@ Guidance for working on the web console. Repo-wide context lives in the root `CL
 
 ## Stack & structure
 
-Vite + React 18 + TypeScript (strict) + react-router-dom. **Deliberately no UI framework** — the design system is hand-rolled ("Signal Terminal": ink canvas, signal-teal accent, monospace data) in `src/styles.css` + `src/components/ui.tsx`; discuss before adding any dependency. Design reference: `docs/design/08-web-console.md`.
+Vite + React 18 + TypeScript (strict) + react-router-dom. **Deliberately no UI framework** — the design system is hand-rolled ("Signal Terminal": warm cream/amber/ink light theme, large radii, hairline borders, a light-neumorphic tab strip, the "pilot lamp" live indicator as its one skeuomorphic signature) in `src/styles.css` + `src/components/ui.tsx`; discuss before adding any dependency. Design reference: `docs/design/08-web-console.md`, `docs/superpowers/specs/2026-07-10-console-warm-theme-system-design.md`.
 
 ```text
 src/
@@ -12,10 +12,13 @@ src/
 │                        #   useAsync<T>() — race-safe fetching with optional polling
 ├── i18n.ts              # bilingual dictionary (en/zh) — dependency-free t(key, lang)
 ├── App.tsx              # auth guard, grouped sidebar shell (nav eyebrows), routes
-├── styles.css           # the entire design system (CSS variables, cards, tables, forms)
+├── styles.css           # the entire design system (CSS variables incl. spacing/type scale, cards, tables, forms)
 ├── components/
-│   ├── ui.tsx           # Icon, Skeleton/TableSkeleton, Spinner, Live, EmptyState,
-│   │                    #   ErrorBanner, StatCard/StatValue, AreaChart, HttpStatus
+│   ├── ui.tsx           # Icon, BrandMark (rail-switch logo — replaced the old torii Icon),
+│   │                    #   Skeleton/TableSkeleton, Spinner, Live, EmptyState, ErrorBanner,
+│   │                    #   Modal, Gauge, StatValue, StatCard (+ delta/sparkline), Sparkline,
+│   │                    #   AreaChart, HttpStatus, Topbar, Button, Card, CardRow, Field,
+│   │                    #   FormGrid, Pill, TableWrap, Tabs
 │   └── ErrorBoundary.tsx
 └── pages/               # Dashboard, Keys, Providers, Audit, Tenants, Billing, Login
 ```
@@ -28,6 +31,8 @@ Note: `index.html` preloads Inter/JetBrains Mono from Google Fonts — inside th
 npm run dev      # :5173, proxies /ai → http://127.0.0.1:8080 (vite.config.ts)
 npm run build    # tsc -b && vite build → dist/
 ```
+
+`npm run dev` also previews the public homepage (`../homepage/`, plain static HTML/CSS/JS) at `/` alongside the console at `/console/` — a dev-only `configureServer` middleware in `vite.config.ts` (`homepagePreview`) serves it directly from the sibling directory, mirroring how the Go backend serves both in production (`backend/internal/homepage` at `/`, `backend/internal/console` at `/console/`). The middleware never runs during `vite build`; it has no effect on `dist/`.
 
 `make embed` at the repo root copies `dist/` into `backend/internal/console/dist` for the single-binary build. Only the placeholder `index.html` is committed there — never commit real build assets. Deployed base path is `/console/` (`base` in vite.config.ts, `basename` in main.tsx — keep them in sync).
 

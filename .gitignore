@@ -16,6 +16,10 @@ out/
 backend/internal/console/dist/*
 !backend/internal/console/dist/index.html
 
+# embedded homepage: only the placeholder is tracked
+backend/internal/homepage/dist/*
+!backend/internal/homepage/dist/index.html
+
 # local env & editor
 .env
 .env.*

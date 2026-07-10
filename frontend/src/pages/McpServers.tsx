@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, useAsync, type McpServer } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Pill, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const emptyForm = {
   id: 0,
@@ -76,20 +76,20 @@ export default function McpServers({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navManage", lang)}</div>
-          <h1>{t("mcpServers", lang)}</h1>
-        </div>
-        <div className="actions flex gap-8">
-          <button className="ghost sm" onClick={refresh}>
-            <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-          <button onClick={() => startEdit()}>
-            <Icon name="plus" size={14} /> {t("addMcpServer", lang)}
-          </button>
-        </div>
-      </div>
+      <Topbar
+        eyebrow={t("navManage", lang)}
+        title={t("mcpServers", lang)}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={refresh}>
+              <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button onClick={() => startEdit()}>
+              <Icon name="plus" size={14} /> {t("addMcpServer", lang)}
+            </Button>
+          </>
+        }
+      />
 
       {showError && (
         <ErrorBanner
@@ -102,47 +102,44 @@ export default function McpServers({ lang }: { lang: Lang }) {
       )}
 
       {showForm && (
-        <form className="card mb-16" onSubmit={submit}>
-          <div className="form-grid">
-            <label className="field">
-              <div className="field-label">{t("name", lang)}</div>
+        <Card className="mb-16">
+          <form onSubmit={submit}>
+          <FormGrid>
+            <Field label={t("name", lang)}>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required autoFocus />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("mcpBaseUrl", lang)}</div>
+            </Field>
+            <Field label={t("mcpBaseUrl", lang)}>
               <input
                 value={form.baseUrl}
                 onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
                 required
                 placeholder="https://example.com/mcp"
               />
-            </label>
-            <label className="field">
-              <div className="field-label">{t("apiKeyWriteOnly", lang)}</div>
+            </Field>
+            <Field label={t("apiKeyWriteOnly", lang)}>
               <input
                 type="password"
                 value={form.apiKey}
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
                 placeholder={form.id ? "••••••  (leave blank to keep)" : t("mcpApiKeyOptional", lang)}
               />
-            </label>
-            <label className="field span-2">
-              <div className="field-label">{t("description", lang)}</div>
+            </Field>
+            <Field span={2} label={t("description", lang)}>
               <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            </Field>
+            <Field row label={t("enabled", lang)}>
               <input type="checkbox" checked={form.isEnabled} onChange={(e) => setForm({ ...form, isEnabled: e.target.checked })} />
-              <div className="field-label" style={{ margin: 0 }}>{t("enabled", lang)}</div>
-            </label>
+            </Field>
             <div className="form-actions">
-              <button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</button>
-              <button type="button" className="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</button>
+              <Button type="submit"><Icon name="check" size={14} /> {t("save", lang)}</Button>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>{t("cancel", lang)}</Button>
             </div>
-          </div>
-        </form>
+          </FormGrid>
+          </form>
+        </Card>
       )}
 
-      <div className="table-wrap">
+      <TableWrap>
         <table>
           <thead>
             <tr>
@@ -164,9 +161,9 @@ export default function McpServers({ lang }: { lang: Lang }) {
                     title={t("emptyMcpServers", lang)}
                     sub={t("emptyMcpServersSub", lang)}
                     action={
-                      <button onClick={() => startEdit()}>
+                      <Button onClick={() => startEdit()}>
                         <Icon name="plus" size={14} /> {t("addMcpServer", lang)}
-                      </button>
+                      </Button>
                     }
                   />
                 </td>
@@ -178,16 +175,16 @@ export default function McpServers({ lang }: { lang: Lang }) {
                   <td className="muted mono"><span className="truncate">{s.baseUrl}</span></td>
                   <td className="muted"><span className="truncate">{s.description || "—"}</span></td>
                   <td>
-                    <span className={`pill ${s.isEnabled ? "on" : "off"}`}>
+                    <Pill tone={s.isEnabled ? "on" : "off"}>
                       {t(s.isEnabled ? "enabled" : "disabled", lang)}
-                    </span>
+                    </Pill>
                   </td>
                   <td>
                     <div className="row-actions">
-                      <button className="ghost sm" onClick={() => startEdit(s)}>{t("editProvider", lang)}</button>
-                      <button className="danger sm" onClick={() => remove(s)}>
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>{t("editProvider", lang)}</Button>
+                      <Button variant="danger" size="sm" onClick={() => remove(s)}>
                         <Icon name="trash" size={13} /> {t("deleteProvider", lang)}
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -195,7 +192,7 @@ export default function McpServers({ lang }: { lang: Lang }) {
             )}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
     </div>
   );
 }

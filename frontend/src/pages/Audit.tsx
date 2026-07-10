@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { api, useAsync, type AttemptRecord, type AuditLog, type AuditSessionSummary, type PageResp, type SecurityOverview } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { EmptyState, ErrorBanner, HttpStatus, Icon, TableSkeleton } from "../components/ui";
+import { Button, Card, CardRow, EmptyState, ErrorBanner, HttpStatus, Icon, Pill, TableSkeleton, TableWrap, Tabs, Topbar } from "../components/ui";
 
 type Tab = "logs" | "sessions" | "security";
 
@@ -73,23 +73,25 @@ export default function Audit({ lang }: { lang: Lang }) {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="titles">
-          <div className="eyebrow">{t("navObserve", lang)}</div>
-          <h1>{t("audit", lang)}</h1>
-        </div>
-        <div className="actions">
-          <button className="ghost sm" onClick={refreshActive}>
+      <Topbar
+        eyebrow={t("navObserve", lang)}
+        title={t("audit", lang)}
+        actions={
+          <Button variant="ghost" size="sm" onClick={refreshActive}>
             <Icon name="refresh" size={14} /> {t("refresh", lang)}
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+      />
 
-      <div className="tabs">
-        <button className={`tab ${tab === "logs" ? "active" : ""}`} onClick={() => setTab("logs")}>{t("auditTabLogs", lang)}</button>
-        <button className={`tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>{t("auditTabSessions", lang)}</button>
-        <button className={`tab ${tab === "security" ? "active" : ""}`} onClick={() => setTab("security")}>{t("auditTabSecurity", lang)}</button>
-      </div>
+      <Tabs
+        items={[
+          { key: "logs", label: t("auditTabLogs", lang) },
+          { key: "sessions", label: t("auditTabSessions", lang) },
+          { key: "security", label: t("auditTabSecurity", lang) },
+        ]}
+        active={tab}
+        onChange={(k) => setTab(k as Tab)}
+      />
 
       {activeError && <ErrorBanner message={`${t("loadFailed", lang)}: ${activeError}`} onRetry={refreshActive} />}
 
@@ -97,11 +99,11 @@ export default function Audit({ lang }: { lang: Lang }) {
         <>
           {sessionFilter && (
             <div className="mb-16">
-              <span className="pill info">{t("filteredBySession", lang)}: {sessionFilter}</span>{" "}
-              <button className="ghost sm" onClick={() => setSessionFilter("")}>{t("clearFilter", lang)}</button>
+              <Pill tone="info">{t("filteredBySession", lang)}: {sessionFilter}</Pill>{" "}
+              <Button variant="ghost" size="sm" onClick={() => setSessionFilter("")}>{t("clearFilter", lang)}</Button>
             </div>
           )}
-          <div className="table-wrap">
+          <TableWrap>
             <table>
               <thead>
                 <tr>
@@ -152,18 +154,18 @@ export default function Audit({ lang }: { lang: Lang }) {
                                   <span className="k" style={{ marginRight: 4 }}>{t("attemptsTrail", lang)}:</span>
                                   {attempts.map((a, i) => (
                                     <span key={i}>
-                                      <span className={`pill ${a.status && a.status < 400 ? "on" : "err"}`}>
+                                      <Pill tone={a.status && a.status < 400 ? "on" : "err"}>
                                         #{a.providerId} {a.status || a.err || "—"}
-                                      </span>
+                                      </Pill>
                                       {i < attempts.length - 1 && <span className="arrow"> → </span>}
                                     </span>
                                   ))}
                                 </div>
                               )}
 
-                              <button className="ghost sm" onClick={(e) => { e.stopPropagation(); toggleBody(l.id); }}>
+                              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); toggleBody(l.id); }}>
                                 <Icon name="eye" size={13} /> {showBodies.has(l.id) ? t("hideBodies", lang) : t("viewBodies", lang)}
-                              </button>
+                              </Button>
                               {showBodies.has(l.id) && (
                                 <div className="mt-8">
                                   <div className="k" style={{ marginBottom: 4 }}>{t("requestBody", lang)}</div>
@@ -181,12 +183,12 @@ export default function Audit({ lang }: { lang: Lang }) {
                 )}
               </tbody>
             </table>
-          </div>
+          </TableWrap>
         </>
       )}
 
       {tab === "sessions" && (
-        <div className="table-wrap">
+        <TableWrap>
           <table>
             <thead>
               <tr>
@@ -221,31 +223,31 @@ export default function Audit({ lang }: { lang: Lang }) {
               )}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       )}
 
       {tab === "security" && (
         <div>
-          <div className="cards">
-            <div className="card stat tone-accent"><div className="label">{t("totalRequests", lang)}</div><div className="value">{security?.totalRequests ?? "—"}</div></div>
-            <div className="card stat tone-err"><div className="label">{t("blockedRequests", lang)}</div><div className="value">{security?.blockCount ?? "—"}</div></div>
-            <div className="card stat tone-warn"><div className="label">{t("redactedRequests", lang)}</div><div className="value">{security?.redactCount ?? "—"}</div></div>
-            <div className="card stat tone-info"><div className="label">{t("errorRate", lang)}</div><div className="value">{security ? `${(security.errorRate * 100).toFixed(2)}%` : "—"}</div></div>
-          </div>
-          <div className="cards">
-            <div className="card toplist" style={{ flex: 1 }}>
+          <CardRow>
+            <Card className="stat"><div className="label">{t("totalRequests", lang)}</div><div className="value">{security?.totalRequests ?? "—"}</div></Card>
+            <Card className="stat"><div className="label">{t("blockedRequests", lang)}</div><div className="value">{security?.blockCount ?? "—"}</div></Card>
+            <Card className="stat"><div className="label">{t("redactedRequests", lang)}</div><div className="value">{security?.redactCount ?? "—"}</div></Card>
+            <Card className="stat"><div className="label">{t("errorRate", lang)}</div><div className="value">{security ? `${(security.errorRate * 100).toFixed(2)}%` : "—"}</div></Card>
+          </CardRow>
+          <CardRow>
+            <Card tone="toplist" style={{ flex: 1 }}>
               <div className="label">{t("topPiiTypes", lang)}</div>
               {(security?.topPiiTypes ?? []).length === 0 ? <div className="empty-note faint">—</div> : (security?.topPiiTypes ?? []).map((r) => (
                 <div className="row" key={r.type}><span>{r.type}</span><span className="muted">{r.count}</span></div>
               ))}
-            </div>
-            <div className="card toplist" style={{ flex: 1 }}>
+            </Card>
+            <Card tone="toplist" style={{ flex: 1 }}>
               <div className="label">{t("topErrorModels", lang)}</div>
               {(security?.topErrorModels ?? []).length === 0 ? <div className="empty-note faint">—</div> : (security?.topErrorModels ?? []).map((r) => (
                 <div className="row" key={r.model}><span>{r.model}</span><span className="muted">{r.error_count}</span></div>
               ))}
-            </div>
-          </div>
+            </Card>
+          </CardRow>
         </div>
       )}
     </div>

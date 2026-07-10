@@ -1,27 +1,17 @@
 // Shared UI primitives for the console: inline-SVG icons (no emoji, no deps),
-// plus loading/empty/error building blocks used across every page.
+// loading/empty/error building blocks, and the layout/form/status components
+// (Topbar, Button, Card, CardRow, Field, FormGrid, Pill, TableWrap, Tabs)
+// used across every page instead of raw CSS classes.
 import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 import type React from "react";
 
 export type IconName =
-  | "torii" | "dashboard" | "key" | "providers" | "audit" | "tenants" | "billing"
+  | "dashboard" | "key" | "providers" | "audit" | "tenants" | "billing"
   | "refresh" | "plus" | "copy" | "check" | "eye" | "trash" | "logout" | "globe"
   | "alert" | "inbox" | "close" | "sync" | "search" | "settings" | "pricetag" | "users" | "drag";
 
 const PATHS: Record<IconName, React.ReactNode> = {
-  // A torii gate — the brand mark. Curved kasagi, nuki, two pillars, gakuzuka.
-  torii: (
-    <>
-      <path d="M2.5 7.5C5 4.5 8 3.5 12 3.5S19 4.5 21.5 7.5" />
-      <path d="M4.5 10H19.5" />
-      <path d="M8 10V20" />
-      <path d="M16 10V20" />
-      <path d="M11 10V13" />
-      <path d="M13 10V13" />
-      <path d="M10.5 13h3" />
-    </>
-  ),
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>,
   key: <><circle cx="8" cy="16" r="4" /><path d="M10.8 13.2 20 4" /><path d="M16 4h4v4" /></>,
   providers: <><rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" /><path d="M7 7.5h.01" /><path d="M7 16.5h.01" /></>,
@@ -47,7 +37,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
   drag: <><circle cx="9" cy="6" r="1.2" /><circle cx="15" cy="6" r="1.2" /><circle cx="9" cy="12" r="1.2" /><circle cx="15" cy="12" r="1.2" /><circle cx="9" cy="18" r="1.2" /><circle cx="15" cy="18" r="1.2" /></>,
 };
 
-export function Icon({ name, size = 16, className }: { name: IconName; size?: number; className?: string }) {
+/** Icon size scale: sm(14) buttons/row-actions, md(16) nav/stat chips,
+ *  lg(26) empty-state/brand marks — every call site should use one of
+ *  these three rather than an arbitrary number. */
+export const ICON_SIZE = { sm: 14, md: 16, lg: 26 } as const;
+
+export function Icon({ name, size = ICON_SIZE.md, className }: { name: IconName; size?: number; className?: string }) {
   return (
     <svg
       className={className}
@@ -56,13 +51,38 @@ export function Icon({ name, size = 16, className }: { name: IconName; size?: nu
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={size >= ICON_SIZE.lg ? 1.6 : 1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
       {PATHS[name]}
+    </svg>
+  );
+}
+
+/** The brand mark — a rail switch: one input line meets a decision point
+ *  that connects to exactly one of three output lines (the other two sit
+ *  faint, idle). Two-tone (ink stroke + a fixed amber dot), so unlike
+ *  every other single-tone `Icon` it isn't tinted via `currentColor` and
+ *  doesn't belong in that component. Static — the console already spends
+ *  its one animated signature on `Live`'s pilot lamp; the animated cycling
+ *  rendition of this same mark lives only on the public homepage
+ *  (`homepage/`, plain HTML/CSS, no React), not here. */
+export function BrandMark({ size = 24, strokeWidth = 5.5, className }: { size?: number; strokeWidth?: number; className?: string }) {
+  // strokeWidth is in the 64-unit viewBox, so it scales WITH size — a large
+  // decorative rendition (e.g. a login-pane background watermark) needs an
+  // explicitly thin value passed in, or the proportionally-identical stroke
+  // becomes tens of pixels thick and the geometry reads as a blob, not a mark.
+  return (
+    <svg width={size} height={(size * 48) / 64} viewBox="0 0 64 48" className={className} aria-hidden="true" focusable="false">
+      <line x1="4" y1="24" x2="20" y2="24" stroke="var(--text)" strokeWidth={strokeWidth} strokeLinecap="round" />
+      <line x1="44" y1="8" x2="60" y2="8" stroke="var(--text)" strokeWidth={strokeWidth} strokeLinecap="round" opacity={0.25} />
+      <line x1="44" y1="40" x2="60" y2="40" stroke="var(--text)" strokeWidth={strokeWidth} strokeLinecap="round" opacity={0.25} />
+      <path d="M20 24 L44 24" stroke="var(--text)" strokeWidth={strokeWidth} strokeLinecap="round" fill="none" />
+      <line x1="44" y1="24" x2="60" y2="24" stroke="var(--text)" strokeWidth={strokeWidth} strokeLinecap="round" />
+      <circle cx="32" cy="24" r={strokeWidth * 0.7} fill="var(--accent)" />
     </svg>
   );
 }
@@ -76,13 +96,164 @@ export function Spinner({ size = 16 }: { size?: number }) {
   return <Icon name="refresh" size={size} className="spin" />;
 }
 
-/** Pulsing real-time indicator; respects prefers-reduced-motion via CSS. */
+/** Pulsing real-time indicator — an embossed bezel housing a glowing amber
+ *  bulb, like a pilot lamp on physical routing hardware. Respects
+ *  prefers-reduced-motion via CSS. */
 export function Live({ label }: { label: string }) {
   return (
     <span className="live" title={label}>
-      <span className="live-dot" />
+      <span className="live-bezel"><span className="live-bulb" /></span>
       {label}
     </span>
+  );
+}
+
+/** The eyebrow+title+actions page header — identical structure on every page. */
+export function Topbar({
+  eyebrow,
+  title,
+  actions,
+}: {
+  eyebrow: string;
+  title: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="topbar">
+      <div className="titles">
+        <div className="eyebrow">{eyebrow}</div>
+        <h1>{title}</h1>
+      </div>
+      {actions && <div className="actions">{actions}</div>}
+    </div>
+  );
+}
+
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "subtle" | "danger";
+
+/** Five-tier button so a solid ink fill isn't the only visual weight on a
+ *  page: primary (the one committing action), secondary (tonal amber),
+ *  ghost (hairline, tertiary), subtle (flat, repeated row actions), danger. */
+export function Button({
+  variant = "primary",
+  size = "md",
+  className,
+  ...rest
+}: {
+  variant?: ButtonVariant;
+  size?: "md" | "sm";
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const cls = [variant !== "primary" && variant, size === "sm" && "sm", className].filter(Boolean).join(" ");
+  return <button className={cls || undefined} {...rest} />;
+}
+
+export type CardTone = "default" | "success" | "toplist";
+
+/** Generic card container — the `.card` shell already used ad hoc for plain
+ *  panels (create-forms, stat groupings) alongside the richer `StatCard`. */
+export function Card({
+  tone = "default",
+  className,
+  ...rest
+}: { tone?: CardTone } & React.HTMLAttributes<HTMLDivElement>) {
+  const cls = ["card", tone !== "default" && tone, className].filter(Boolean).join(" ");
+  return <div className={cls} {...rest} />;
+}
+
+/** The flex-wrap row that groups Cards/StatCards. */
+export function CardRow({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div className="cards" style={style}>
+      {children}
+    </div>
+  );
+}
+
+/** A labeled form field — `<label className="field">` wrapping a
+ *  field-label + input; `row` gives the inline checkbox layout, `span`
+ *  the form-grid column span. */
+export function Field({
+  label,
+  children,
+  span,
+  row,
+  className,
+  style,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+  span?: 2 | 3;
+  row?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const cls = ["field", span === 2 && "span-2", span === 3 && "span-3", className].filter(Boolean).join(" ");
+  const labelStyle = row ? { margin: 0 } : undefined;
+  const fieldStyle = row ? { flexDirection: "row" as const, alignItems: "center", gap: 8, ...style } : style;
+  const labelEl = <div className="field-label" style={labelStyle}>{label}</div>;
+  return (
+    <label className={cls} style={fieldStyle}>
+      {/* row mode is a checkbox field: input-then-label, matching a native checkbox layout */}
+      {row ? (<>{children}{labelEl}</>) : (<>{labelEl}{children}</>)}
+    </label>
+  );
+}
+
+/** The 3-column form grid; nests fine for sub-grids. */
+export function FormGrid({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div className="form-grid" style={style}>
+      {children}
+    </div>
+  );
+}
+
+export type PillTone = "on" | "off" | "warn" | "info" | "err";
+
+/** Status badge. `variant="outline"` is the lower-emphasis form for
+ *  metadata tags that shouldn't compete visually with real status. */
+export function Pill({
+  tone = "off",
+  variant = "soft",
+  children,
+}: {
+  tone?: PillTone;
+  variant?: "soft" | "outline";
+  children: React.ReactNode;
+}) {
+  const cls = ["pill", variant === "outline" ? "outline" : tone].filter(Boolean).join(" ");
+  return <span className={cls}>{children}</span>;
+}
+
+/** Thin wrapper around a hand-written `<table>`; scrolls its own overflow
+ *  horizontally so the page body never scrolls sideways. */
+export function TableWrap({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={["table-wrap", className].filter(Boolean).join(" ")}>{children}</div>;
+}
+
+/** Recessed/embossed tab strip — used today only on Usage/Audit. */
+export function Tabs({
+  items,
+  active,
+  onChange,
+}: {
+  items: { key: string; label: string }[];
+  active: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div className="tabs">
+      {items.map((it) => (
+        <button
+          key={it.key}
+          type="button"
+          className={`tab ${active === it.key ? "active" : ""}`}
+          onClick={() => onChange(it.key)}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -213,6 +384,8 @@ export function StatCard({
   sub,
   loading,
   tone = "accent",
+  delta,
+  sparkline,
 }: {
   icon: IconName;
   label: string;
@@ -220,16 +393,61 @@ export function StatCard({
   sub?: React.ReactNode;
   loading?: boolean;
   tone?: "accent" | "ok" | "warn" | "info" | "err";
+  /** Trend arrow + %, colored by whether *this* metric's direction is good —
+   *  e.g. rising requests is good (up), falling latency is also good (down). */
+  delta?: { pct: number; goodDirection: "up" | "down" };
+  /** Optional inline single-hue trend line, no axes — same dependency-free
+   *  SVG approach as AreaChart. */
+  sparkline?: number[];
 }) {
+  const rising = delta ? delta.pct >= 0 : false;
+  const good = delta ? (rising ? delta.goodDirection === "up" : delta.goodDirection === "down") : false;
+  const body = (
+    <>
+      <div className="value">{loading ? <Skeleton w={64} h={24} /> : value}</div>
+      {delta && !loading && (
+        <div className={`delta ${good ? "good" : "bad"}`}>
+          {rising ? "▲" : "▼"} {Math.abs(delta.pct).toFixed(1)}%
+        </div>
+      )}
+      {sub != null && sub !== "" && <div className="sub">{sub}</div>}
+    </>
+  );
+  const showSparkline = sparkline && sparkline.length > 1 && !loading;
   return (
     <div className={`card stat tone-${tone}`}>
       <div className="stat-head">
-        <span className="chip"><Icon name={icon} size={15} /></span>
+        <span className="chip"><Icon name={icon} size={16} /></span>
         <span className="label">{label}</span>
       </div>
-      <div className="value">{loading ? <Skeleton w={64} h={24} /> : value}</div>
-      {sub != null && sub !== "" && <div className="sub">{sub}</div>}
+      {/* .row's flex/padding is only appropriate once there's a sparkline to
+       *  sit beside — every other caller keeps the original flat layout. */}
+      {showSparkline ? (
+        <div className="row">
+          <div>{body}</div>
+          <Sparkline points={sparkline!} />
+        </div>
+      ) : (
+        body
+      )}
     </div>
+  );
+}
+
+/** Single-hue inline trend line, no axes/gridlines — the sparkline half of
+ *  the stat-tile figure contract (value + delta + optional sparkline). */
+export function Sparkline({ points, width = 72, height = 28 }: { points: number[]; width?: number; height?: number }) {
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  const range = max - min || 1;
+  const step = width / (points.length - 1);
+  const path = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - ((p - min) / range) * height).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg className="spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <path d={path} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
