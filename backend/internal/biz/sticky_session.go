@@ -34,6 +34,9 @@ func extractSessionHash(key *model.AIVirtualKey, r *http.Request, body []byte) s
 		}
 	}
 	if len(body) > 0 {
+		if uid := extractMetadataUserID(body); uid != "" {
+			return hashSessionKey(scope + "uid:" + uid)
+		}
 		if pck := extractPromptCacheKey(body); pck != "" {
 			return hashSessionKey(scope + "pck:" + pck)
 		}
@@ -42,6 +45,19 @@ func extractSessionHash(key *model.AIVirtualKey, r *http.Request, body []byte) s
 		}
 	}
 	return ""
+}
+
+// extractMetadataUserID 读取 Anthropic Messages / OpenAI 请求体中的
+// metadata.user_id（客户端用于标识同一会话/用户的不透明 ID，比
+// prompt_cache_key 更早出现在协议里，优先级仅次于显式 Header）。
+func extractMetadataUserID(body []byte) string {
+	var req struct {
+		Metadata struct {
+			UserID string `json:"user_id"`
+		} `json:"metadata"`
+	}
+	_ = json.Unmarshal(body, &req)
+	return strings.TrimSpace(req.Metadata.UserID)
 }
 
 func extractPromptCacheKey(body []byte) string {
