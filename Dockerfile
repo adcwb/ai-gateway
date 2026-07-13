@@ -7,13 +7,15 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- backend build ----
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-# refresh embedded console with the real build
+COPY homepage/ ./homepage-src/
+# refresh embedded console + homepage with the real build
 COPY --from=webbuilder /web/dist ./internal/console/dist
+RUN rm -rf ./internal/homepage/dist && cp -r ./homepage-src ./internal/homepage/dist && rm -rf ./homepage-src
 RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server
 
 # ---- runtime ----

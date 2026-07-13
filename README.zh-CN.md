@@ -6,6 +6,11 @@
 
 **文档：** [产品愿景](docs/zh-CN/01-product-vision.md) · [差距分析](docs/zh-CN/02-gap-analysis.md) · [路线图](docs/zh-CN/03-roadmap.md) · [设计套件](docs/zh-CN/README.md)
 
+<p align="center">
+  <img src="docs/assets/homepage-zh.png" alt="ai-gateway 公开首页" width="49%">
+  <img src="docs/assets/dashboard.png" alt="ai-gateway 控制台仪表盘" width="49%">
+</p>
+
 ## 功能
 
 - **虚拟 Key 管理** —— 发放 `sk-vk-*` 凭证（AES-256-GCM 加密存储、SHA-256 查找）；轮换上游 Key 无需改动客户端

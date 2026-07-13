@@ -6,6 +6,11 @@ A self-hosted, OpenAI-compatible **AI traffic control plane** written in Go. One
 
 **Docs:** [Product vision](docs/01-product-vision.md) · [Gap analysis](docs/02-gap-analysis.md) · [Roadmap](docs/03-roadmap.md) · [Design suite](docs/README.md)
 
+<p align="center">
+  <img src="docs/assets/homepage-en.png" alt="ai-gateway public homepage" width="49%">
+  <img src="docs/assets/dashboard.png" alt="ai-gateway console dashboard" width="49%">
+</p>
+
 ## Features
 
 - **Virtual key management** — issue `sk-vk-*` credentials (AES-256-GCM at rest, SHA-256 lookup); rotate upstream keys without touching clients

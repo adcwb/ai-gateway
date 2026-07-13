@@ -20,10 +20,12 @@ jobs:
       - name: Build console
         working-directory: frontend
         run: npm install && npm run build
-      - name: Embed console
+      - name: Embed console + homepage
         run: |
           rm -rf backend/internal/console/dist
           cp -r frontend/dist backend/internal/console/dist
+          rm -rf backend/internal/homepage/dist
+          cp -r homepage backend/internal/homepage/dist
 
       - uses: actions/setup-go@v5
         with:
