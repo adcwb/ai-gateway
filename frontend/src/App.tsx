@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, clearToken, getToken } from "./api/client";
 import { getLang, setLang, t, type Lang } from "./i18n";
-import { BrandMark, Icon, type IconName } from "./components/ui";
+import { BrandMark, HelpRail, Icon, type IconName } from "./components/ui";
+import { HELP_CONTENT } from "./helpContent";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Keys from "./pages/Keys";
@@ -38,6 +39,8 @@ const NAV: NavItem[] = [
   { to: "/usage", key: "usage", icon: "dashboard" },
 ];
 
+const HELP_RAIL_COLLAPSED_KEY = "aigw_help_rail_collapsed";
+
 export default function App() {
   const [lang, setLangState] = useState<Lang>(getLang());
   const [authed, setAuthed] = useState<boolean>(!!getToken());
@@ -45,7 +48,11 @@ export default function App() {
   // cookie) — probe /auth/me once on mount so a page load after an OIDC
   // redirect (or a refresh mid-session) doesn't bounce back to the login page.
   const [checkingSession, setCheckingSession] = useState(!getToken());
+  const [helpRailCollapsed, setHelpRailCollapsed] = useState(
+    () => localStorage.getItem(HELP_RAIL_COLLAPSED_KEY) === "1",
+  );
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (getToken()) return;
@@ -59,6 +66,12 @@ export default function App() {
     const next: Lang = lang === "en" ? "zh" : "en";
     setLang(next);
     setLangState(next);
+  };
+
+  const toggleHelpRail = () => {
+    const next = !helpRailCollapsed;
+    setHelpRailCollapsed(next);
+    localStorage.setItem(HELP_RAIL_COLLAPSED_KEY, next ? "1" : "0");
   };
 
   if (checkingSession) {
@@ -136,6 +149,21 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {HELP_CONTENT[location.pathname] && (
+        <HelpRail
+          icon={HELP_CONTENT[location.pathname].icon}
+          title={t("helpRailTitle", lang)}
+          tips={HELP_CONTENT[location.pathname].tips.map((tip) => ({
+            title: t(tip.titleKey, lang),
+            body: t(tip.bodyKey, lang),
+          }))}
+          collapsed={helpRailCollapsed}
+          onToggle={toggleHelpRail}
+          collapseLabel={t("helpRailCollapse", lang)}
+          expandLabel={t("helpRailExpand", lang)}
+        />
+      )}
     </div>
   );
 }

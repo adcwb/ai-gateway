@@ -589,6 +589,86 @@ select {
   border-radius: var(--radius-sm); padding: 9px 12px; word-break: break-all; color: var(--text);
 }
 
+/* -------------------------------------------------------------- help rail */
+
+/* Structural, not a floating card: flush to the viewport edge, no radius,
+   no shadow — it reads as a compartment built into the console frame, the
+   same way `.sidebar` does on the opposite edge. Each tip "branches" off a
+   vertical spine at its accent tick, echoing the rail-switch brand mark's
+   own line-meets-a-decision-point shape instead of stacking plain cards. */
+.help-rail {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 280px;
+  padding: var(--space-6) var(--space-5) var(--space-9);
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border);
+}
+.help-rail-head {
+  display: flex; align-items: center; gap: 9px;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.help-rail-head .chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid var(--accent-line); flex-shrink: 0;
+}
+.help-rail-head .ttl {
+  flex: 1;
+  font: 600 10px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent-strong); opacity: 0.9;
+}
+.help-rail-head .iconbtn { width: 26px; height: 26px; padding: 0; }
+
+.help-rail-tips {
+  position: relative;
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--space-6);
+}
+.help-tip { position: relative; padding-left: var(--space-4); }
+.help-tip::before {
+  content: ""; position: absolute; left: -1px; top: 7px;
+  width: 10px; height: 2px; border-radius: 1px; background: var(--accent);
+}
+.help-tip .ttl {
+  font: 650 13.5px var(--font-display); letter-spacing: -0.005em;
+  color: var(--text); margin-bottom: 5px;
+}
+.help-tip .body { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+
+.help-rail.collapsed {
+  width: 40px;
+  padding: var(--space-6) 0;
+  display: flex;
+  justify-content: center;
+}
+.help-rail-collapsed-btn {
+  background: transparent; border: none; box-shadow: none; padding: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  color: var(--faint); cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+.help-rail-collapsed-btn:hover { color: var(--accent-strong); }
+.help-rail-collapsed-label {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font: 600 10px var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase;
+}
+.rot-180 { transform: rotate(180deg); }
+
+@media (max-width: 1679px) {
+  /* Matches .help-rail.collapsed's specificity so this actually wins below
+     the breakpoint — a bare `.help-rail { display: none }` here loses to
+     the two-class collapsed rule regardless of media-query nesting. */
+  .help-rail, .help-rail.collapsed { display: none; }
+}
+
 /* ------------------------------------------------------------- responsive */
 
 @media (max-width: 1279px) and (min-width: 861px) {

@@ -9,7 +9,7 @@ import type React from "react";
 export type IconName =
   | "dashboard" | "key" | "providers" | "audit" | "tenants" | "billing"
   | "refresh" | "plus" | "copy" | "check" | "eye" | "trash" | "logout" | "globe"
-  | "alert" | "inbox" | "close" | "sync" | "search" | "settings" | "pricetag" | "users" | "drag";
+  | "alert" | "inbox" | "close" | "sync" | "search" | "settings" | "pricetag" | "users" | "drag" | "chevron";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>,
@@ -35,6 +35,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   pricetag: <><path d="M12.5 2H4a2 2 0 0 0-2 2v8.5a2 2 0 0 0 .59 1.41l9 9a2 2 0 0 0 2.82 0l7.5-7.5a2 2 0 0 0 0-2.82l-9-9A2 2 0 0 0 12.5 2z" /><path d="M7.5 7.5h.01" /></>,
   users: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
   drag: <><circle cx="9" cy="6" r="1.2" /><circle cx="15" cy="6" r="1.2" /><circle cx="9" cy="12" r="1.2" /><circle cx="15" cy="12" r="1.2" /><circle cx="9" cy="18" r="1.2" /><circle cx="15" cy="18" r="1.2" /></>,
+  chevron: <path d="M15 6l-6 6 6 6" />,
 };
 
 /** Icon size scale: sm(14) buttons/row-actions, md(16) nav/stat chips,
@@ -540,5 +541,57 @@ export function HttpStatus({ code }: { code?: number }) {
   if (code == null) return <span className="faint">—</span>;
   const tone = code < 300 ? "on" : code < 500 ? "warn" : "err";
   return <span className={`pill ${tone}`}>{code}</span>;
+}
+
+/** Sticky right-hand rail of page-specific tips — fills the dead space
+ *  beyond `.main`'s max-width on wide viewports (hidden below it via CSS).
+ *  Collapses to a slim strip; App.tsx owns the persisted collapse state
+ *  since it's one preference shared across every page, not per-page. */
+export function HelpRail({
+  icon,
+  title,
+  tips,
+  collapsed,
+  onToggle,
+  collapseLabel,
+  expandLabel,
+}: {
+  icon: IconName;
+  title: string;
+  tips: { title: string; body: string }[];
+  collapsed: boolean;
+  onToggle: () => void;
+  collapseLabel: string;
+  expandLabel: string;
+}) {
+  if (collapsed) {
+    return (
+      <aside className="help-rail collapsed">
+        <button className="help-rail-collapsed-btn" onClick={onToggle} aria-label={expandLabel} title={expandLabel}>
+          <Icon name="chevron" size={13} className="rot-180" />
+          <span className="help-rail-collapsed-label">{title}</span>
+        </button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="help-rail">
+      <div className="help-rail-head">
+        <span className="chip"><Icon name={icon} size={15} /></span>
+        <span className="ttl">{title}</span>
+        <button className="iconbtn" onClick={onToggle} aria-label={collapseLabel} title={collapseLabel}>
+          <Icon name="chevron" size={13} />
+        </button>
+      </div>
+      <div className="help-rail-tips">
+        {tips.map((tip, i) => (
+          <div className="help-tip" key={i}>
+            <div className="ttl">{tip.title}</div>
+            <div className="body">{tip.body}</div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
 }
 

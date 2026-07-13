@@ -370,6 +370,139 @@ const dict: Record<string, { en: string; zh: string }> = {
   // ---- Usage (timeseries page) ------------------------------------------------
   usage: { en: "Usage", zh: "用量" },
   daysN: { en: "{n}d", zh: "{n} 天" },
+
+  // ---- Help rail (wide-viewport contextual tips, D-console-help-rail) ---------
+  helpRailTitle: { en: "Tips", zh: "提示" },
+  helpRailCollapse: { en: "Collapse tips", zh: "收起提示" },
+  helpRailExpand: { en: "Show tips", zh: "展开提示" },
+
+  help_keys_1_title: { en: "Quotas & rate limits", zh: "配额与限流" },
+  help_keys_1_body: {
+    en: "Global quotas can be overridden per model; leave a field at 0 for unlimited.",
+    zh: "全局配额（日/时 Token、请求数、并发、积分）支持按模型覆盖，字段留 0 表示不限。",
+  },
+  help_keys_2_title: { en: "Response cache", zh: "响应缓存" },
+  help_keys_2_body: {
+    en: "Exact-match and semantic caching toggle independently, with TTL, similarity threshold, and a cache-hit billing discount.",
+    zh: "精确匹配缓存与语义缓存可分别开关，含 TTL、相似度阈值与命中折扣。",
+  },
+  help_keys_3_title: { en: "Guardrail binding", zh: "防护策略绑定" },
+  help_keys_3_body: {
+    en: "A key with no explicit policy binding falls back to the tenant's default guardrail policy.",
+    zh: "未显式绑定策略的 Key 会使用租户默认策略。",
+  },
+
+  help_providers_1_title: { en: "Weight vs priority", zh: "权重与优先级" },
+  help_providers_1_body: {
+    en: "Same priority = weighted round-robin; different priority = fallback order, lowest tried first.",
+    zh: "同优先级按权重加权轮询；不同优先级则是故障转移顺序，数字小的先尝试。",
+  },
+  help_providers_2_title: { en: "Breaker states", zh: "熔断状态" },
+  help_providers_2_body: {
+    en: "closed (healthy) → open (tripped, fails fast) → half-open (probing recovery).",
+    zh: "关闭（健康）→打开（熔断，快速失败）→半开（探测恢复）。",
+  },
+  help_providers_3_title: { en: "Sync models", zh: "同步模型" },
+  help_providers_3_body: {
+    en: "Pulls the live model list from upstream instead of typing a comma-separated list by hand.",
+    zh: "直接从上游拉取真实模型列表，无需手动输入逗号分隔的模型名。",
+  },
+
+  help_modelsPricing_1_title: { en: "Catalog vs price tables", zh: "目录 vs 价格表" },
+  help_modelsPricing_1_body: {
+    en: "The model catalog tracks upstream cost; price tables are independent sell-side pricing you assign to tenants.",
+    zh: "模型目录记录上游真实成本；价格表是可独立分配给租户的对外售价。",
+  },
+  help_modelsPricing_2_title: { en: "Pattern tester", zh: "匹配测试器" },
+  help_modelsPricing_2_body: {
+    en: "Preview which known models a wildcard/regex price row matches before saving.",
+    zh: "保存前预览通配符/正则会命中哪些已知模型。",
+  },
+  help_modelsPricing_3_title: { en: "Multi-currency", zh: "多币种" },
+  help_modelsPricing_3_body: {
+    en: "Price tables are priced per currency; rates are configured under Settings → Credits rates.",
+    zh: "价格表按币种计价，汇率在“系统设置→积分汇率”里配置。",
+  },
+
+  help_modelMappings_1_title: { en: "Virtual vs real model", zh: "虚拟名 vs 真实模型" },
+  help_modelMappings_1_body: {
+    en: "The virtual name is what clients put in the model field; the real model is what's actually sent upstream.",
+    zh: "虚拟模型名是客户端请求里写的 model 字段，真实模型才是转发给提供方的名字。",
+  },
+  help_modelMappings_2_title: { en: "Fallback chain", zh: "故障转移链" },
+  help_modelMappings_2_body: {
+    en: "Tried in order after the primary mapping hits a retryable failure; drag to reorder.",
+    zh: "主映射失败且可重试时按顺序尝试，可拖拽调整顺序。",
+  },
+  help_modelMappings_3_title: { en: "Bulk add", zh: "批量添加" },
+  help_modelMappings_3_body: {
+    en: "\"Add all models from…\" appends every matching-modality model of a provider that isn't already in the chain.",
+    zh: "“从渠道批量添加”会把某提供方下模态匹配、尚未在链中的模型一次性加入。",
+  },
+
+  help_guardrailPolicies_1_title: { en: "Ordered checker chain", zh: "检测链按序执行" },
+  help_guardrailPolicies_1_body: {
+    en: "Checkers run in the order you add them to the chain.",
+    zh: "pii_rules / prompt_injection / topic_fence / external 按加入顺序依次执行。",
+  },
+  help_guardrailPolicies_2_title: { en: "One default per tenant", zh: "唯一默认策略" },
+  help_guardrailPolicies_2_body: {
+    en: "Keys with no explicit binding use whichever policy is marked default.",
+    zh: "未绑定策略的 Key 会使用被标记为默认的那一个。",
+  },
+  help_guardrailPolicies_3_title: { en: "External checker", zh: "外部检测器" },
+  help_guardrailPolicies_3_body: {
+    en: "The \"external\" checker calls your own gRPC endpoint for custom logic beyond the built-ins.",
+    zh: "“external” 通过 gRPC 调用你自己的服务实现内置检测器之外的自定义逻辑。",
+  },
+
+  help_mcpServers_1_title: { en: "Proxy path", zh: "代理路径" },
+  help_mcpServers_1_body: {
+    en: "Registered servers are reachable at /ai/mcp/{serverName}, gated by the same sk-vk-* virtual keys as model traffic.",
+    zh: "已注册的服务器可通过 /ai/mcp/{serverName} 访问，鉴权方式与模型调用相同（sk-vk-*）。",
+  },
+  help_mcpServers_2_title: { en: "Tool whitelist", zh: "工具白名单" },
+  help_mcpServers_2_body: {
+    en: "An empty whitelist means every tool the server exposes is callable.",
+    zh: "留空表示该服务器暴露的全部工具都可调用。",
+  },
+  help_mcpServers_3_title: { en: "Separate quota dimension", zh: "独立配额维度" },
+  help_mcpServers_3_body: {
+    en: "Tool calls consume their own hourly quota, separate from token/request quotas.",
+    zh: "工具调用消耗独立的“每小时工具调用配额”，与 Token/请求配额分开计算。",
+  },
+
+  help_tenants_1_title: { en: "Hierarchy", zh: "层级关系" },
+  help_tenants_1_body: {
+    en: "Tenant → project → keys; billing and quota templates live at the tenant/project level.",
+    zh: "租户→项目→Key；计费与配额模板都挂在租户/项目层。",
+  },
+  help_tenants_2_title: { en: "Quota template inheritance", zh: "配额模板继承" },
+  help_tenants_2_body: {
+    en: "A project's quota template pre-fills defaults for keys created under it.",
+    zh: "项目的配额模板会预填给该项目下新建的 Key。",
+  },
+  help_tenants_3_title: { en: "Default tenant", zh: "默认租户" },
+  help_tenants_3_body: {
+    en: "The gateway boots with a default tenant so you can issue keys immediately; add more to isolate billing and quotas.",
+    zh: "网关启动时自带一个默认租户，方便立即签发 Key；多租户用于隔离计费与配额。",
+  },
+
+  help_usersAccess_1_title: { en: "Four-role matrix", zh: "四级角色矩阵" },
+  help_usersAccess_1_body: {
+    en: "owner > admin > member > viewer, applied to RBAC-covered actions like key reveal, provider/pricing/settings management, billing, and member management.",
+    zh: "owner > admin > member > viewer，作用于取回 Key、提供方/价格表/设置管理、计费、成员管理等受控操作。",
+  },
+  help_usersAccess_2_title: { en: "Admin API key purpose", zh: "管理员 API Key 用途" },
+  help_usersAccess_2_body: {
+    en: "For automating the management API itself — not for /ai/v1 model traffic, which is what virtual keys are for.",
+    zh: "用于自动化管理接口本身，不用于 /ai/v1 模型调用（那是虚拟 Key 的职责）。",
+  },
+  help_usersAccess_3_title: { en: "First SSO login", zh: "SSO 首次登录" },
+  help_usersAccess_3_body: {
+    en: "Members appear here automatically after their first SSO login; you then assign a role.",
+    zh: "成员首次通过 SSO 登录后会自动出现在列表里，再手动分配角色。",
+  },
 };
 
 export function t(key: string, lang: Lang): string {
