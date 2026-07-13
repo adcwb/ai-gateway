@@ -89,6 +89,22 @@ func (uc *GatewayUseCase) applyPIIPolicy(ctx context.Context, key *model.AIVirtu
 
 	switch policy.Action {
 	case model.PIIActionBlock:
+		// A client following the OpenAI Chat Completions convention resends
+		// the FULL messages array on every call — scanPII above just scanned
+		// the whole raw body as one blob, so a match anywhere in resent
+		// history (an earlier turn already audited, possibly already
+		// rejected once) would re-trigger this same block forever, even once
+		// the user's own new input has nothing left to fix. Re-check scoped
+		// to just the latest turn's own text before honoring the block;
+		// res.Redacted already has every match (current turn's included, if
+		// any) masked in one pass, so it's always safe to forward.
+		if curText, scoped := currentTurnText(body); scoped {
+			if !scanPII([]byte(curText), cfg.Detectors, cfg.PromptInjection).Found {
+				ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionLog, types: types})
+				uc.logger.Warnf("PII 命中位于历史消息，非当前轮新输入——不拦截，已脱敏转发 keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+				return ctx, piiOutput{Blocked: false, NewBody: res.Redacted, Types: types}
+			}
+		}
 		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionBlock, types: types})
 		return ctx, piiOutput{Blocked: true, NewBody: body, Types: types}
 	case model.PIIActionRedact:
@@ -124,6 +140,33 @@ func (uc *GatewayUseCase) runInboundChain(ctx context.Context, key *model.AIVirt
 	}
 	switch action {
 	case guardrail.ActionBlock:
+		// Same fix as applyPIIPolicy's legacy-engine block case above (see
+		// its doc comment): re-check scoped to just the latest turn's own
+		// text before honoring a block found by scanning the whole body.
+		if curText, scoped := currentTurnText(body); scoped {
+			if _, curAction, _ := chain.Run(ctx, curText, guardrail.DirectionInbound, nil); curAction != guardrail.ActionBlock {
+				// Every checker in a block-action chain fires with
+				// Action==Block uniformly (policy.Action applied chain-wide
+				// — see buildChainForPolicy's ADR note), so finalText was
+				// never rewritten by Chain.Run's own redact step; fall back
+				// to whichever finding actually supplied a masked rewrite
+				// (pii_rules always does; a keyword/heuristic checker like
+				// prompt_injection/topic_fence has no text-level redaction
+				// to offer, so the original text passes through for those —
+				// same "rule-grade, not semantic-grade" honesty this
+				// pipeline already carries elsewhere).
+				forwardText := finalText
+				for _, f := range findings {
+					if f.Redacted != "" {
+						forwardText = f.Redacted
+						break
+					}
+				}
+				ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionLog, types: types})
+				uc.logger.Warnf("guardrail: 命中位于历史消息，非当前轮新输入——不拦截，已尽力脱敏后转发 keyID=%d policy=%s types=%s", key.ID, policy.Name, types)
+				return ctx, piiOutput{Blocked: false, NewBody: []byte(forwardText), Types: types}
+			}
+		}
 		ctx = context.WithValue(ctx, piiAuditCtxKey{}, &piiAuditInfo{action: model.PIIActionBlock, types: types})
 		return ctx, piiOutput{Blocked: true, NewBody: body, Types: types}
 	case guardrail.ActionRedact:
