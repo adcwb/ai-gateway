@@ -11,9 +11,9 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 func newTestGatewayForSettings(t *testing.T, sysCfg *conf.System) *GatewayUseCase {

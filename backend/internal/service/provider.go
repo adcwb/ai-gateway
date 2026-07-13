@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/middleware"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/middleware"
 )
 
 // Provider management handlers (admin-authenticated). Providers are global,

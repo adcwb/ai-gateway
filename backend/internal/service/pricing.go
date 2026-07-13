@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
 )
 
 // Model catalog + price table management handlers (docs/design/08-web-console.md

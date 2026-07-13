@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // TestProxyRequest_StreamingGuardrailTerminatesOnInjection is the end-to-end

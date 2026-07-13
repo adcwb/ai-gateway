@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	guardrailv1 "github.com/opscenter/ai-gateway/api/guardrail/v1"
+	guardrailv1 "github.com/adcwb/ai-gateway/api/guardrail/v1"
 )
 
 // ExternalChecker calls an operator-run detection service over gRPC (docs/

@@ -9,13 +9,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/console"
-	"github.com/opscenter/ai-gateway/internal/homepage"
-	"github.com/opscenter/ai-gateway/internal/middleware"
-	"github.com/opscenter/ai-gateway/internal/observability"
-	"github.com/opscenter/ai-gateway/internal/service"
+	"github.com/adcwb/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/console"
+	"github.com/adcwb/ai-gateway/internal/homepage"
+	"github.com/adcwb/ai-gateway/internal/middleware"
+	"github.com/adcwb/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/service"
 )
 
 // NewHTTPServer builds and returns the net/http.Server with all routes registered.

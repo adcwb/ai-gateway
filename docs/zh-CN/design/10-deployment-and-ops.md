@@ -87,3 +87,7 @@ Helm chart 放 `deploy/helm/`：Deployment + HPA（CPU + 可选基于 `aigw_conc
 ## 验证
 
 本文的交付物*就是* P0 出口标准（[路线图](../03-roadmap.md)）：干净机器上仅按 README 操作，compose 到首个请求不超过 10 分钟；两个数据库上 CI 全绿且过覆盖率门槛；打 tag 即产出可安装的多架构产物。元验证：在一台从没见过这个仓库的机器上拿秒表跑一遍快速开始。
+
+## 实现说明（ADR 补记）
+
+**模块路径已从 `github.com/opscenter/ai-gateway` 迁移到 `github.com/adcwb/ai-gateway`。** 上面的仓库卫生条目早期修正过一次模块名；如今为跟上实际的 GitHub 远程仓库（`github.com/adcwb/ai-gateway`，项目托管与发布均在此）又迁移了一次。所有内部 import、`guardrail.proto` 的 `go_package` 选项、`webhook-logger` 示例自身的模块声明，以及 Helm chart 默认的 `image.repository`（`ghcr.io/adcwb/ai-gateway`，与 `release.yml` 的 `ghcr.io/${{ github.repository }}` 保持一致）均在同一次改动中一并更新——模块改名必须全量落地，因为 Go 是按声明的 import 路径解析内部包的。

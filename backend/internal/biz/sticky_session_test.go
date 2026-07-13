@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 func TestExtractSessionHash_Priority(t *testing.T) {

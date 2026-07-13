@@ -7,9 +7,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/pkg"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/pkg"
 )
 
 // MCP server registry management (docs/design/09-extensibility.md "MCP

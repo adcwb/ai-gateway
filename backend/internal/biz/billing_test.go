@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
-	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/eventbus"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 func newTestBilling(t *testing.T) (*BillingManager, *gorm.DB) {

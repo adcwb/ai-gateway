@@ -26,14 +26,14 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
-	"github.com/opscenter/ai-gateway/internal/biz/extension"
-	"github.com/opscenter/ai-gateway/internal/biz/vectorindex"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/observability"
-	"github.com/opscenter/ai-gateway/internal/pkg"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/biz/eventbus"
+	"github.com/adcwb/ai-gateway/internal/biz/extension"
+	"github.com/adcwb/ai-gateway/internal/biz/vectorindex"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/pkg"
 )
 
 // GatewayUseCase is the core gateway business logic with all injected dependencies.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/biz"
 )
 
 // SessionCookieName is the console's session cookie (docs/design/04-multi-

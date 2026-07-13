@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // CreateVirtualKeyReq 创建虚拟 Key

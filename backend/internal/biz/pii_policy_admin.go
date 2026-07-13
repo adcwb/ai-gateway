@@ -8,8 +8,8 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // PII/guardrail policy management (docs/design/06-security-and-guardrails.md

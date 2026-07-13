@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Active health probing (docs/design/01-routing-and-lb.md, "Optional active

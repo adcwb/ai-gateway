@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/middleware"
+	"github.com/adcwb/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/middleware"
 )
 
 // AuthService handles OIDC/SSO login and the console session cookie

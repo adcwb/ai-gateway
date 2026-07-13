@@ -11,7 +11,7 @@ import (
 
 	"gorm.io/datatypes"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Batch + Files API proxy (docs/design/09-extensibility.md "Future protocol

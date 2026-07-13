@@ -4,9 +4,9 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/middleware"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/middleware"
 )
 
 // Tenancy + billing + stats handlers (admin-authenticated).

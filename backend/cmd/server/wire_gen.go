@@ -9,12 +9,12 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data"
-	"github.com/opscenter/ai-gateway/internal/observability"
-	"github.com/opscenter/ai-gateway/internal/server"
-	"github.com/opscenter/ai-gateway/internal/service"
+	"github.com/adcwb/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data"
+	"github.com/adcwb/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/server"
+	"github.com/adcwb/ai-gateway/internal/service"
 )
 
 // Injectors from wire.go:

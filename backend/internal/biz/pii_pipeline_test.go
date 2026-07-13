@@ -12,10 +12,10 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
-	guardrailv1 "github.com/opscenter/ai-gateway/api/guardrail/v1"
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	guardrailv1 "github.com/adcwb/ai-gateway/api/guardrail/v1"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // resetGuardrailCaches clears the package-level policy/chain caches

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // ProxyAnthropicMessages is the /anthropic/v1/messages entrance (D02): decode

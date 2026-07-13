@@ -1,4 +1,4 @@
-module github.com/opscenter/ai-gateway
+module github.com/adcwb/ai-gateway
 
 go 1.25.0
 

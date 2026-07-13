@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
 )
 
 // Model mapping registry (admin API, docs/design/01-routing-and-lb.md),

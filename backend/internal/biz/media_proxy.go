@@ -14,8 +14,8 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Multimodal media adapters, phase 1 (docs/superpowers/specs/2026-07-09-

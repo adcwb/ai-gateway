@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/biz/vectorindex"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/vectorindex"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Semantic cache (docs/design/07-caching-strategies.md P2, "Two caches, one

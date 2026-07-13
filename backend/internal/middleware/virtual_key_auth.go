@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
-	"github.com/opscenter/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/observability"
 )
 
 // VirtualKeyAuth is an HTTP middleware that authenticates requests via Bearer sk-vk-* token.

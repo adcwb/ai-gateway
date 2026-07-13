@@ -3,7 +3,7 @@ package service
 import (
 	"net/http"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/biz"
 )
 
 // Video generation, phase 2 (docs/superpowers/specs/2026-07-09-video-

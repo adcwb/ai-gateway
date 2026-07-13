@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package guardrail.v1;
 
-option go_package = "github.com/opscenter/ai-gateway/api/guardrail/v1;guardrailv1";
+option go_package = "github.com/adcwb/ai-gateway/api/guardrail/v1;guardrailv1";
 
 // GuardrailEngine is the contract an operator's external detection service
 // implements (docs/design/06-security-and-guardrails.md, P2 "external"

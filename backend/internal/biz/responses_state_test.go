@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 func doProxyResponses(uc *GatewayUseCase, key *model.AIVirtualKey, body []byte) *httptest.ResponseRecorder {

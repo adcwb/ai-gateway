@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
 )
 
 // Extension registry (admin API, docs/design/09-extensibility.md "Delivery

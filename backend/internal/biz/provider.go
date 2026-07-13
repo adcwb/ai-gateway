@@ -13,9 +13,9 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/pkg"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/pkg"
 )
 
 // Provider management (docs/design/08-web-console.md forces these endpoints

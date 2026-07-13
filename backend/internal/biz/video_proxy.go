@@ -9,8 +9,8 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"gorm.io/datatypes"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Video generation, phase 2 of the multimodal media adapters project

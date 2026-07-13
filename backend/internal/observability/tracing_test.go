@@ -7,7 +7,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/conf"
 )
 
 // TestSetupTracing_Disabled asserts the "zero overhead when off" contract

@@ -9,7 +9,7 @@ This file provides repo-wide guidance for Claude Code. Directory-specific guidan
 ## Repository layout
 
 ```text
-├── backend/    # Go gateway (module github.com/opscenter/ai-gateway) — see backend/CLAUDE.md
+├── backend/    # Go gateway (module github.com/adcwb/ai-gateway) — see backend/CLAUDE.md
 ├── frontend/   # React+TS web console (Vite) — see frontend/CLAUDE.md
 ├── homepage/   # public marketing page, plain HTML/CSS/JS, no build step — served at "/" (embedded via backend/internal/homepage)
 ├── docs/       # Product & design suite, EN authoritative + docs/zh-CN mirror
@@ -71,7 +71,7 @@ When picking up new work, prefer closing a 🟡 row before starting a 🔴 one, 
 
 ## Notes that bite
 
-- `go.mod` module is `github.com/opscenter/ai-gateway` — keep it; do not "fix" to other names.
+- `go.mod` module is `github.com/adcwb/ai-gateway` (matches the GitHub remote) — keep it in sync with the actual repo path; a rename must touch every internal import in the same change (see the D10 ADR addendum for the 2026-07-13 opscenter→adcwb rename).
 - `cmd/server/wire_gen.go` is hand-maintained; keep it in sync with `wire.go` and the `ProviderSet`s.
 - GORM `default:` tags override zero-value fields on `Create` (weight 0, grace_hours 0…) — seed explicitly.
 - `backend/internal/console/dist/` holds only a placeholder `index.html` in git; never commit real console assets there.

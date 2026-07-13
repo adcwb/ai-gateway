@@ -20,11 +20,11 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/conf"
 )
 
 // Tracer is the single tracer instance used across the gateway.
-var Tracer = otel.Tracer("github.com/opscenter/ai-gateway")
+var Tracer = otel.Tracer("github.com/adcwb/ai-gateway")
 
 const defaultSampleRatio = 0.01
 
@@ -90,7 +90,7 @@ func SetupTracing(ctx context.Context, cfg *conf.Observability, logger log.Logge
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
-	Tracer = otel.Tracer("github.com/opscenter/ai-gateway")
+	Tracer = otel.Tracer("github.com/adcwb/ai-gateway")
 
 	helper.Infof("OTel 追踪已启用 endpoint=%s sampleRatio=%.4f", cfg.OTLPEndpoint, ratio)
 	return tp.Shutdown, nil

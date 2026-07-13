@@ -1,6 +1,6 @@
 package dto
 
-import "github.com/opscenter/ai-gateway/internal/data/model"
+import "github.com/adcwb/ai-gateway/internal/data/model"
 
 // CreateTenantReq registers a tenant (a disabled billing-account shell is
 // created alongside).

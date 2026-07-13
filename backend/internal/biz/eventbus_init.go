@@ -4,8 +4,8 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"gorm.io/gorm"
 
-	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
-	"github.com/opscenter/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/biz/eventbus"
+	"github.com/adcwb/ai-gateway/internal/conf"
 )
 
 // NewEventBus builds the on_audit/on_billing event bus (docs/design/09-

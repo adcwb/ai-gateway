@@ -4,7 +4,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/opscenter/ai-gateway/internal/biz"
+	"github.com/adcwb/ai-gateway/internal/biz"
 )
 
 // Batch + Files API proxy handlers (docs/design/09-extensibility.md). Thin

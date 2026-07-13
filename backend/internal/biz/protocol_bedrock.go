@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/biz/bedrock"
+	"github.com/adcwb/ai-gateway/internal/biz/bedrock"
 )
 
 // Bedrock outbound dialect (docs/design/02-protocol-adapters.md): five model

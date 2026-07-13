@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // ProxyResponses is the /ai/v1/responses entrance (D02): decode Responses API

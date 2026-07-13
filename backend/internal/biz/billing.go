@@ -17,10 +17,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/opscenter/ai-gateway/internal/biz/eventbus"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/biz/eventbus"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/observability"
 )
 
 // BillingManager implements the P1 commercial loop

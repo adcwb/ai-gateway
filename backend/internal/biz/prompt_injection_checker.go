@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
 )
 
 // promptInjectionChecker is the standalone `prompt_injection` checker (docs/

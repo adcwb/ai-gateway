@@ -14,10 +14,10 @@ import (
 	"gorm.io/gorm"
 	gormLogger "gorm.io/gorm/logger"
 
-	"github.com/opscenter/ai-gateway/internal/biz/extension"
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/pkg"
+	"github.com/adcwb/ai-gateway/internal/biz/extension"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/pkg"
 )
 
 // -----------------------------------------------------------------------------

@@ -10,9 +10,9 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"gopkg.in/yaml.v3"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/observability"
-	"github.com/opscenter/ai-gateway/internal/server"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/server"
 )
 
 var flagconf string

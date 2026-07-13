@@ -87,3 +87,7 @@ Versioning: SemVer; `v0.x` until P1 completes, `v1.0` = P1 exit criteria met (th
 ## Verification
 
 This document's deliverables *are* the P0 exit criteria ([Roadmap](../03-roadmap.md)): compose-to-first-request under 10 minutes on a clean machine following README only; CI green with coverage gate on both databases; release workflow produces installable multi-arch artifacts from a tag. The meta-verification: run the quickstart on a machine that has never seen the repo, with a stopwatch.
+
+## Implementation notes (ADR addendum)
+
+**The module path moved from `github.com/opscenter/ai-gateway` to `github.com/adcwb/ai-gateway`.** The repository hygiene item above fixed the module name once, early on; it has since moved a second time to track the actual GitHub remote (`github.com/adcwb/ai-gateway`) the project is hosted and released from. Every internal import, the `guardrail.proto` `go_package` option, the `webhook-logger` example's own module declaration, and the Helm chart's default `image.repository` (`ghcr.io/adcwb/ai-gateway`, matching `release.yml`'s `ghcr.io/${{ github.repository }}`) were updated together in the same change — a module rename is all-or-nothing, since Go resolves internal packages by their declared import path.

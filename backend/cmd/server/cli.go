@@ -10,10 +10,10 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"gopkg.in/yaml.v3"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
-	"github.com/opscenter/ai-gateway/internal/data"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/pkg"
+	"github.com/adcwb/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/data"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/pkg"
 )
 
 // CLI subcommands (docs/design/10-deployment-and-ops.md):

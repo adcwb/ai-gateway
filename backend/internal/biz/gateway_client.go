@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/conf"
+	"github.com/adcwb/ai-gateway/internal/conf"
 )
 
 // proxyTimeout returns the configured proxy timeout with a 300s fallback.

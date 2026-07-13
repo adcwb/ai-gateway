@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Protocol adapter layer (docs/design/02-protocol-adapters.md, P2-1/P2-3).

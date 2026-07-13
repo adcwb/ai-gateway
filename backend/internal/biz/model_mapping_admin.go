@@ -12,8 +12,8 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
-	"github.com/opscenter/ai-gateway/internal/biz/dto"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/dto"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // Model mapping management (docs/design/01-routing-and-lb.md "console UI:

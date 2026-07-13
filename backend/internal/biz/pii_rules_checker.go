@@ -3,7 +3,7 @@ package biz
 import (
 	"context"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
 )
 
 // piiRulesChecker adapts the existing rule-based engine (pii_engine.go's

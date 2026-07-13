@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 type virtualKeyCtxKey struct{}

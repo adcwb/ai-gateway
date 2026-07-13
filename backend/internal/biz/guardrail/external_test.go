@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	guardrailv1 "github.com/opscenter/ai-gateway/api/guardrail/v1"
+	guardrailv1 "github.com/adcwb/ai-gateway/api/guardrail/v1"
 )
 
 // fakeGuardrailServer is a minimal, real gRPC server implementing the

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
-	"github.com/opscenter/ai-gateway/internal/biz/mcpgw"
-	"github.com/opscenter/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/biz/mcpgw"
+	"github.com/adcwb/ai-gateway/internal/data/model"
 )
 
 // MCP gateway proxy (docs/design/09-extensibility.md "MCP gateway", points

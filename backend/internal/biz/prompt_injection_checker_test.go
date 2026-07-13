@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
 )
 
 func TestPromptInjectionChecker_Fires(t *testing.T) {

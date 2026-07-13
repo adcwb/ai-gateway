@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/opscenter/ai-gateway/internal/biz/guardrail"
-	"github.com/opscenter/ai-gateway/internal/data/model"
-	"github.com/opscenter/ai-gateway/internal/observability"
+	"github.com/adcwb/ai-gateway/internal/biz/guardrail"
+	"github.com/adcwb/ai-gateway/internal/data/model"
+	"github.com/adcwb/ai-gateway/internal/observability"
 )
 
 // Streaming outbound guardrail scanning (docs/design/06-security-and-
