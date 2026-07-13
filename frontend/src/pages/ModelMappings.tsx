@@ -106,6 +106,7 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
   const [form, setForm] = useState({ ...emptyForm });
   const [chain, setChain] = useState<FallbackChainEntry[]>([]);
   const [modalityFilter, setModalityFilter] = useState<string>("llm");
+  const [batchProviderId, setBatchProviderId] = useState(0);
   const [actionError, setActionError] = useState("");
 
   const keysQ = useAsync<VirtualKey[]>(
@@ -216,6 +217,18 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
     setChain((c) => c.map((x, idx) => (idx === i ? entry : x)));
   const removeChainRow = (i: number) => setChain((c) => c.filter((_, idx) => idx !== i));
 
+  const addAllModelsFromProvider = () => {
+    if (!batchProviderId) return;
+    const existing = new Set(chain.map((c) => `${c.providerId}:${c.model}`));
+    const toAdd = models
+      .filter((m) => m.providerId === batchProviderId && (m.modelType || "llm") === modalityFilter)
+      .filter((m) => !existing.has(`${batchProviderId}:${m.name}`))
+      .map((m) => ({ providerId: batchProviderId, model: m.name }));
+    if (toAdd.length === 0) return;
+    setChain((c) => [...c, ...toAdd]);
+    setBatchProviderId(0);
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -325,9 +338,23 @@ export default function ModelMappings({ lang }: { lang: Lang }) {
                   </div>
                 </SortableContext>
               </DndContext>
-              <Button type="button" variant="ghost" size="sm" style={{ marginTop: 8 }} onClick={addChainRow}>
-                <Icon name="plus" size={13} /> {t("addFallbackStep", lang)}
-              </Button>
+              <div className="flex gap-8 items-center" style={{ marginTop: 8 }}>
+                <Button type="button" variant="ghost" size="sm" onClick={addChainRow}>
+                  <Icon name="plus" size={13} /> {t("addFallbackStep", lang)}
+                </Button>
+                <select
+                  value={batchProviderId}
+                  onChange={(e) => setBatchProviderId(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                >
+                  <option value={0}>—</option>
+                  {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <Button type="button" variant="ghost" size="sm" disabled={!batchProviderId} onClick={addAllModelsFromProvider}>
+                  <Icon name="plus" size={13} /> {t("addAllModelsFromProvider", lang)}
+                </Button>
+              </div>
+              <div className="sub">{t("addAllModelsFromProviderHint", lang)}</div>
             </div>
 
             <div className="form-actions">

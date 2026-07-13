@@ -47,6 +47,11 @@ const dict: Record<string, { en: string; zh: string }> = {
   state: { en: "Breaker", zh: "熔断" },
   weight: { en: "Weight", zh: "权重" },
   priority: { en: "Priority", zh: "优先级" },
+  reorderPriority: { en: "Reorder priority", zh: "排序优先级" },
+  reorderPriorityHint: {
+    en: "Drag to reorder — providers tried first sit at the top. Saving only rewrites providers whose rank changed.",
+    zh: "拖拽调整顺序，排在前面的提供方会被优先尝试。保存时只会更新排名发生变化的提供方。",
+  },
   baseUrl: { en: "Base URL", zh: "上游地址" },
   models: { en: "Models", zh: "模型" },
   enabled: { en: "enabled", zh: "启用" },
@@ -322,6 +327,11 @@ const dict: Record<string, { en: string; zh: string }> = {
   },
   fallbackModelName: { en: "Model name", zh: "模型名" },
   addFallbackStep: { en: "Add fallback step", zh: "添加回退步骤" },
+  addAllModelsFromProvider: { en: "Add all models from…", zh: "从渠道批量添加…" },
+  addAllModelsFromProviderHint: {
+    en: "Appends every model of the selected provider (matching the mapping's modality) that isn't already in the chain.",
+    zh: "将所选提供方下、与当前映射模态匹配且尚未在链中的模型一次性追加进来。",
+  },
   emptyModelMappings: { en: "No mappings for this key", zh: "该 Key 暂无映射" },
   emptyModelMappingsSub: {
     en: "Map a virtual model name to a real model, with an optional fallback chain.",

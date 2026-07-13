@@ -1,7 +1,24 @@
 import { useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { api, useAsync, type Provider, type ProviderHealth } from "../api/client";
 import { t, type Lang } from "../i18n";
-import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, TableSkeleton, TableWrap, Topbar } from "../components/ui";
+import { Button, Card, EmptyState, ErrorBanner, Field, FormGrid, Icon, Modal, TableSkeleton, TableWrap, Topbar } from "../components/ui";
 
 const emptyForm = {
   id: 0,
@@ -16,6 +33,7 @@ const emptyForm = {
 
 export default function Providers({ lang }: { lang: Lang }) {
   const [showForm, setShowForm] = useState(false);
+  const [showSort, setShowSort] = useState(false);
   const [form, setForm] = useState({ ...emptyForm });
   const [actionError, setActionError] = useState("");
 
@@ -108,6 +126,9 @@ export default function Providers({ lang }: { lang: Lang }) {
           <>
             <Button variant="ghost" size="sm" onClick={refresh}>
               <Icon name="refresh" size={14} /> {t("refresh", lang)}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowSort(true)} disabled={providers.length < 2}>
+              <Icon name="drag" size={14} /> {t("reorderPriority", lang)}
             </Button>
             <Button onClick={() => startEdit()}>
               <Icon name="plus" size={14} /> {t("addProvider", lang)}
@@ -242,6 +263,113 @@ export default function Providers({ lang }: { lang: Lang }) {
           </tbody>
         </table>
       </TableWrap>
+
+      {showSort && (
+        <ReorderPriorityModal
+          providers={providers}
+          lang={lang}
+          onClose={() => setShowSort(false)}
+          onSaved={() => {
+            setShowSort(false);
+            refresh();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function PriorityRow({ provider, rank }: { provider: Provider; rank: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: provider.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="flex gap-8 items-center">
+      <Button type="button" variant="ghost" size="sm" {...attributes} {...listeners} style={{ cursor: "grab" }}>
+        <Icon name="drag" size={14} />
+      </Button>
+      <span className="mono faint" style={{ width: 24 }}>#{rank + 1}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div>{provider.name}</div>
+        <div className="muted mono truncate">{provider.baseUrl}</div>
+      </div>
+      <span className="faint mono">W{provider.weight}</span>
+    </div>
+  );
+}
+
+function ReorderPriorityModal({
+  providers,
+  lang,
+  onClose,
+  onSaved,
+}: {
+  providers: Provider[];
+  lang: Lang;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [order, setOrder] = useState<Provider[]>(() =>
+    [...providers].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name)),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setOrder((list) => {
+      const from = list.findIndex((p) => p.id === active.id);
+      const to = list.findIndex((p) => p.id === over.id);
+      return from < 0 || to < 0 ? list : arrayMove(list, from, to);
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      // Gap-based ranks (0, 10, 20, ...) leave room for later manual fine-tuning;
+      // only providers whose priority actually changed are written.
+      const updates = order
+        .map((p, i) => ({ id: p.id, priority: i * 10, changed: p.priority !== i * 10 }))
+        .filter((u) => u.changed);
+      await Promise.all(updates.map((u) => api.put("/ai/gateway/providers", { id: u.id, priority: u.priority })));
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={t("reorderPriority", lang)} onClose={onClose} closeLabel={t("close", lang)} width={520}>
+      <p className="sub mb-8">{t("reorderPriorityHint", lang)}</p>
+      {error && <ErrorBanner message={error} onRetry={() => setError("")} />}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={order.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          <div className="flex" style={{ flexDirection: "column", gap: 6 }}>
+            {order.map((p, i) => (
+              <PriorityRow key={p.id} provider={p} rank={i} />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      <div className="form-actions" style={{ marginTop: 16 }}>
+        <Button onClick={save} disabled={saving}>
+          <Icon name="check" size={14} /> {t("save", lang)}
+        </Button>
+        <Button variant="ghost" onClick={onClose}>{t("cancel", lang)}</Button>
+      </div>
+    </Modal>
   );
 }
