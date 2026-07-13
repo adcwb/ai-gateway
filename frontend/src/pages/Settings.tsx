@@ -230,7 +230,7 @@ export default function Settings({ lang }: { lang: Lang }) {
         <div className="label mb-16">{t("about", lang)}</div>
         <div className="detail-grid">
           <div><div className="k">{t("aboutProject", lang)}</div><div className="v">ai-gateway</div></div>
-          <div><div className="k">{t("aboutRepo", lang)}</div><div className="v">github.com/opscenter/ai-gateway</div></div>
+          <div><div className="k">{t("aboutRepo", lang)}</div><div className="v">github.com/adcwb/ai-gateway</div></div>
         </div>
       </Card>
     </div>
