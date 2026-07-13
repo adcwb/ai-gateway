@@ -35,7 +35,7 @@ func wireApp(bc *conf.Bootstrap, logger log.Logger) (*kratos.App, func(), error)
 		return nil, nil, err
 	}
 
-	metrics := observability.NewMetrics()
+	metrics := observability.NewMetrics(db)
 
 	// ES client is optional; pass nil to use Redis spill queue when ES is unavailable.
 	auditWorker := biz.NewAuditWorker(db, rdb, nil, bc.Audit, bc.System, logger)

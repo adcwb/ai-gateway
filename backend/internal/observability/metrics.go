@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"gorm.io/gorm"
 )
 
 // Metrics is the gateway instrument set, registered on its own registry so
@@ -37,9 +39,35 @@ type Metrics struct {
 }
 
 // NewMetrics constructs and registers the instrument set.
-func NewMetrics() *Metrics {
+//
+// Note on why a fresh scrape of an idle instance looks sparse: every
+// aigw_* metric below except AuditQueueDepth/ConcurrencySlots is a *Vec
+// (CounterVec/HistogramVec/GaugeVec) — the Prometheus client library does
+// not emit a time series for a label combination until .WithLabelValues(...)
+// is actually called with it, so e.g. aigw_requests_total only appears once
+// at least one proxy request has completed. This is standard client_golang
+// behavior, not a bug; it self-resolves once real traffic flows.
+//
+// db is optional (nil-safe) and used only to register client_golang's
+// DBStatsCollector (open/in-use/idle connections, wait count/duration) —
+// this project uses its own isolated prometheus.Registry (for test
+// isolation) rather than the global DefaultRegisterer, so unlike a typical
+// promhttp.Handler() setup, the standard Go runtime and process collectors
+// (goroutines, GC pauses, heap size, CPU seconds, RSS, open FDs, ...) are
+// NOT registered automatically and must be added explicitly below.
+func NewMetrics(db *gorm.DB) *Metrics {
 	reg := prometheus.NewRegistry()
 	factory := promauto.With(reg)
+
+	reg.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+	if db != nil {
+		if sqlDB, err := db.DB(); err == nil {
+			reg.MustRegister(collectors.NewDBStatsCollector(sqlDB, "primary"))
+		}
+	}
 
 	m := &Metrics{
 		Registry: reg,

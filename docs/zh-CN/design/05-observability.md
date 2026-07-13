@@ -107,3 +107,9 @@ Span 属性尽量遵循 OTel GenAI 语义约定（`gen_ai.system`、`gen_ai.requ
 - 集成：在 D01 故障转移测试期间抓取 `/metrics`，断言 `aigw_failover_total` 递增、`aigw_breaker_state` 迁移可见。
 - 停掉 Redis 后 `readyz` 在缓存窗口内翻 503，恢复后翻回 200。
 - P2：黄金 trace 测试——一次流式请求产生上述 span 拓扑，GenAI 属性填充完整。
+
+## 实现笔记（ADR 附录）
+
+**刚启动（或空闲）的实例抓取 `/metrics` 看起来很稀疏，这是设计使然，不是 bug。** 除了 `aigw_audit_queue_depth`/`aigw_concurrency_slots` 之外，上面列的每个 `aigw_*` 指标都是 `*Vec`（`CounterVec`/`HistogramVec`/`GaugeVec`）；client_golang 的行为是：某个标签组合在被 `.WithLabelValues(...)` 实际调用之前，根本不会产生对应的时间序列——`aigw_requests_total` 要等到至少有一次代理请求完成才会出现，`aigw_breaker_state` 要等到熔断器被触碰过一次才会出现，以此类推。这一点曾让一位运维在刚启动、还没有任何流量的实例上抓取 `/metrics`，结果只看到两个无标签的普通 gauge 而感到困惑；一旦真实流量开始流动，这个现象会自然消失——这也不是本项目 `NewMetrics` 试图去规避的问题（提前把所有可能的标签组合都注册一遍并不现实，provider/model/tenant 的取值都是动态的）。
+
+**标准的 Go 运行时和进程指标此前缺失，这一点*确实*是个真实的缺口。** `internal/observability/metrics.go` 自建了一个独立的 `prometheus.NewRegistry()`（刻意与 `prometheus.DefaultRegisterer` 隔离，这样测试就能构造互不干扰的独立 `Metrics` 实例），而不是走一个普通 `promhttp.Handler()` 默认会用的全局注册表——和全局注册表不同，全新的 `prometheus.NewRegistry()` **不会**自动带上大多数 Prometheus 用户默认会期望任何 Go 服务都具备的 Go 采集器（`go_goroutines`、`go_gc_duration_seconds`、`go_memstats_*` 等）或进程采集器（`process_cpu_seconds_total`、`process_resident_memory_bytes`、`process_open_fds`、`process_start_time_seconds` 等）。`NewMetrics` 现在会显式注册 `collectors.NewGoCollector()` 和 `collectors.NewProcessCollector(...)`（`prometheus/client_golang/prometheus/collectors`），并在传入了 `*gorm.DB` 时额外注册 `collectors.NewDBStatsCollector(sqlDB, "primary")`（连接池的打开/使用中/空闲连接数、等待次数/耗时，取自 `database/sql` 自身的 `DBStats`）——这三者在第一次抓取时就会出现，哪怕应用层还完全没有流量。为此 `NewMetrics` 新增了一个 `db *gorm.DB` 参数（对 nil 安全：`db` 为 nil，或其 `.DB()` 报错，只会跳过 DB 连接池采集器，不会让构造失败）——`cmd/server/wire_gen.go` 直接把已经构造好的 `db` 传进去即可，因为它本来就在 `NewMetrics` 被调用之前就已经构造完成，不需要调整顺序。
