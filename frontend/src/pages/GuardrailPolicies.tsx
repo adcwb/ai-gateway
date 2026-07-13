@@ -266,6 +266,7 @@ export default function GuardrailPolicies({ lang }: { lang: Lang }) {
             <div className="field span-3">
               <div className="field-label">{t("checkerChain", lang)}</div>
               <div className="sub mb-8">{t("checkerChainHint", lang)}</div>
+              <div className="sub mb-8">{t("streamingGuardrailNotice", lang)}</div>
               {chain.map((c, i) => (
                 <CheckerCard key={i} checker={c} lang={lang} onChange={(nc) => updateChecker(i, nc)} onRemove={() => removeChecker(i)} />
               ))}

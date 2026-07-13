@@ -44,7 +44,7 @@ func (s *AuthService) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: oidcStateCookie, Value: state, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Expires: time.Now().Add(10 * time.Minute),
+		Secure: biz.IsRequestSecure(r), Expires: time.Now().Add(10 * time.Minute),
 	})
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
@@ -64,9 +64,14 @@ func (s *AuthService) Callback(w http.ResponseWriter, r *http.Request) {
 		failWithErr(w, err)
 		return
 	}
+	// Secure is inferred per-request (direct TLS or a TLS-terminating reverse
+	// proxy's X-Forwarded-Proto) rather than hardcoded — see biz.IsRequestSecure.
+	// Expires now matches the JWT's own TTL (auth.session_ttl_hours, default
+	// 24h) instead of a separately hardcoded 24h that could silently drift
+	// from it once that config is changed.
 	http.SetCookie(w, &http.Cookie{
 		Name: middleware.SessionCookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Expires: time.Now().Add(24 * time.Hour),
+		Secure: biz.IsRequestSecure(r), Expires: time.Now().Add(s.uc.SessionTTL()),
 	})
 	http.Redirect(w, r, "/console/", http.StatusFound)
 }

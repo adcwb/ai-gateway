@@ -48,14 +48,13 @@ func (uc *AuthUseCase) OIDCEnabled() bool {
 	return uc.authCfg != nil && strings.TrimSpace(uc.authCfg.OIDCIssuer) != ""
 }
 
+// sessionSecret resolves the HMAC key that signs the session JWT via
+// conf.ResolvedSessionSecret — the single source of truth also consulted by
+// cmd/server/main.go's startup validation (an admin_token configured without
+// a resolvable secret here fails fast at boot rather than silently signing
+// with an empty key).
 func (uc *AuthUseCase) sessionSecret() []byte {
-	if uc.authCfg != nil && uc.authCfg.SessionSecret != "" {
-		return []byte(uc.authCfg.SessionSecret)
-	}
-	if uc.sysCfg != nil {
-		return []byte(uc.sysCfg.EncryptionKey)
-	}
-	return []byte("")
+	return []byte(conf.ResolvedSessionSecret(uc.authCfg, uc.sysCfg))
 }
 
 func (uc *AuthUseCase) sessionTTL() time.Duration {
@@ -64,6 +63,16 @@ func (uc *AuthUseCase) sessionTTL() time.Duration {
 		hours = uc.authCfg.SessionTTLHours
 	}
 	return time.Duration(hours) * time.Hour
+}
+
+// SessionTTL exposes the configured session lifetime (auth.session_ttl_hours,
+// default 24h) so the service layer can set the aigw_session cookie's Expires
+// to match the JWT's own expiry instead of a separately hardcoded value —
+// the two silently drifting apart used to mean a cookie could outlive its
+// token (harmless — the JWT check still rejects it) or expire and force a
+// re-login before the still-valid token actually needed one.
+func (uc *AuthUseCase) SessionTTL() time.Duration {
+	return uc.sessionTTL()
 }
 
 // ensureProvider performs OIDC discovery once, lazily, on first use.

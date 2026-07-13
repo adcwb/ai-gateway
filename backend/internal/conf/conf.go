@@ -197,6 +197,21 @@ func (bc *Bootstrap) ApplyEnvOverrides() {
 	}
 }
 
+// ResolvedSessionSecret returns the HMAC key that signs the console session
+// JWT (docs/design/04-multi-tenancy-and-auth.md): auth.session_secret if set,
+// otherwise system.encryption_key, or "" if neither is configured. Centralized
+// here so main.go's startup validation and biz.AuthUseCase's runtime signing
+// share exactly one fallback rule instead of two copies drifting apart.
+func ResolvedSessionSecret(authCfg *Auth, sysCfg *System) string {
+	if authCfg != nil && strings.TrimSpace(authCfg.SessionSecret) != "" {
+		return authCfg.SessionSecret
+	}
+	if sysCfg != nil && sysCfg.EncryptionKey != "" {
+		return sysCfg.EncryptionKey
+	}
+	return ""
+}
+
 func (bc *Bootstrap) ensureServer() *Server {
 	if bc.Server == nil {
 		bc.Server = &Server{}

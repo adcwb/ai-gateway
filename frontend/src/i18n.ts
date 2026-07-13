@@ -351,6 +351,10 @@ const dict: Record<string, { en: string; zh: string }> = {
     en: "An ordered list of checkers run against every request/response. Empty = legacy single rule-engine behavior.",
     zh: "按顺序对请求/响应执行的检测器列表。留空则使用旧版单引擎行为。",
   },
+  streamingGuardrailNotice: {
+    en: "Streaming responses are protected best-effort: a block/terminate finding stops the rest of the stream, but chunks already sent to the client before the finding was raised cannot be recalled. Non-streaming requests are fully checked before any bytes are written.",
+    zh: "流式响应的防护是尽力而为：命中拦截/终止后会停止后续内容，但命中之前已发往客户端的分块无法收回。非流式请求会在写出任何字节前完成全部检测。",
+  },
   addChecker: { en: "Add checker", zh: "添加检测器" },
   removeChecker: { en: "Remove", zh: "移除" },
   detectors: { en: "Detectors", zh: "检测项" },
