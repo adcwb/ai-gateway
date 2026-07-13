@@ -57,6 +57,7 @@ export default defineConfig({
   plugins: [react(), homepagePreview()],
   base: "/console/",
   server: {
+    host: "0.0.0.0", // reachable from other devices on the LAN, not just localhost
     port: 5173,
     proxy: {
       "/ai": {
@@ -64,6 +65,10 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 5173,
   },
   build: {
     outDir: "dist",

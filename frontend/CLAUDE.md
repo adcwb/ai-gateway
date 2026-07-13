@@ -34,6 +34,8 @@ npm run build    # tsc -b && vite build → dist/
 
 `npm run dev` also previews the public homepage (`../homepage/`, plain static HTML/CSS/JS) at `/` alongside the console at `/console/` — a dev-only `configureServer` middleware in `vite.config.ts` (`homepagePreview`) serves it directly from the sibling directory, mirroring how the Go backend serves both in production (`backend/internal/homepage` at `/`, `backend/internal/console` at `/console/`). The middleware never runs during `vite build`; it has no effect on `dist/`.
 
+Both `server.host` and `preview.host` are set to `0.0.0.0` in `vite.config.ts` — `npm run dev`/`npm run preview` are reachable from other devices on the LAN (Vite prints the `Network:` URLs), not just `localhost`, which matters for testing from another machine or a container/VM host.
+
 `make embed` at the repo root copies `dist/` into `backend/internal/console/dist` for the single-binary build. Only the placeholder `index.html` is committed there — never commit real build assets. Deployed base path is `/console/` (`base` in vite.config.ts, `basename` in main.tsx — keep them in sync).
 
 ## Hard rules
