@@ -214,6 +214,20 @@ func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtual
 		slotKey := fmt.Sprintf("ai:gw:slot:key:%d", key.ID)
 		waitKey := fmt.Sprintf("ai:gw:wait:%d", key.ID)
 
+		// rollbackHourlyReq undoes step 1's hourly-request-count reservation —
+		// mirrors the rollback steps 3/4 already do on their own failure.
+		// Without this, a request that never gets past the concurrency slot
+		// (Redis error, or wait-queue timeout) still permanently consumes one
+		// unit of HourlyReqQuota, so concurrency contention/Redis hiccups alone
+		// can push a key into rate-limiting sooner than its actual
+		// accepted-request volume justifies.
+		rollbackHourlyReq := func() {
+			if !skipModelDims && key.HourlyReqQuota > 0 {
+				bucket := strconv.FormatInt(now.Unix()/bucketSecs, 10)
+				rdb.HIncrBy(ctx, fmt.Sprintf("ai:gw:rl:reqs:%d", key.ID), bucket, -1)
+			}
+		}
+
 		acquired := false
 		waitIncremented := false
 		for i := 0; i < maxWaitAttempts; i++ {
@@ -223,6 +237,7 @@ func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtual
 				if waitIncremented {
 					rdb.Decr(ctx, waitKey)
 				}
+				rollbackHourlyReq()
 				return "", fmt.Errorf("redis error: %w", scriptErr)
 			}
 			if n == 1 {
@@ -242,6 +257,7 @@ func (q *QuotaManager) CheckAndReserve(ctx context.Context, key *model.AIVirtual
 		if !acquired {
 			recordTriggerIfNew(ctx, q.db, rdb, key, model.QuotaDimConcurrency,
 				int64(key.MaxConcurrency), int64(key.MaxConcurrency), model.QuotaReasonWaitTimeout)
+			rollbackHourlyReq()
 			return "", fmt.Errorf("并发队列等待超时（超过 5s），请稍后重试")
 		}
 		requestID = rid

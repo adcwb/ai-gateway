@@ -196,6 +196,29 @@ func (uc *GatewayUseCase) applyOutboundGuardrail(ctx context.Context, key *model
 	}
 }
 
+// applyCacheHitGuardrail re-runs the outbound guardrail chain against a
+// cached response before it is replayed to a cache-hit caller. A cache entry
+// is served across every request that maps to its digest/scope over its
+// whole TTL — it was guardrail-checked (if at all) exactly once, at the
+// moment it was first written by the request that produced it. A later
+// caller can resolve to a different virtual key (different PII policy) or
+// the same key's policy can have been tightened since the entry was cached,
+// so skipping this check on a hit would let a cache serve content that
+// would be blocked/redacted if generated fresh right now. Returns the
+// (possibly redacted) entry to serve, and the JSON error body to send
+// instead when the policy blocks it — entry itself is left with its
+// original Prompt/Completion/ProviderID intact even when blocked, so the
+// caller can still bill/audit against the real cached usage numbers.
+func (uc *GatewayUseCase) applyCacheHitGuardrail(ctx context.Context, key *model.AIVirtualKey, entry *cachedResponse) (context.Context, *cachedResponse, []byte) {
+	ctx, finalBody, blocked := uc.applyOutboundGuardrail(ctx, key, entry.Body)
+	if blocked {
+		return ctx, entry, finalBody
+	}
+	out := *entry
+	out.Body = finalBody
+	return ctx, &out, nil
+}
+
 // extractAssistantText / replaceAssistantText target the OpenAI chat.completion
 // shape's choices[0].message.content — the canonical internal representation
 // every dialect's response is normalized to before this point runs, so a

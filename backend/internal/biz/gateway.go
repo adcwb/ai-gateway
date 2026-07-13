@@ -684,6 +684,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			if uc.metrics != nil {
 				uc.metrics.CacheRequests.WithLabelValues("exact", "hit").Inc()
 			}
+			// A cached entry was only guardrail-checked once, by whichever
+			// request first wrote it — re-scan on every hit so a different
+			// (or since-tightened) PII policy still applies to this reply.
+			var blockedBody []byte
+			ctx, entry, blockedBody = uc.applyCacheHitGuardrail(ctx, key, entry)
 			var hitPrice int64
 			if freeze != nil && freeze.Account != nil {
 				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, entry.ProviderID, realModelName, entry.Prompt, entry.Completion, entry.CacheRead, 0)
@@ -693,7 +698,17 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			if uc.billing != nil {
 				uc.billing.RecordUsage(tenantID, key.ID, entry.ProviderID, realModelName, 0, 0, 0, 0, hitPrice, true)
 			}
-			uc.writeAuditLog(ctx, key, entry.ProviderID, realModelName, body, entry.Body, entry.Prompt, entry.Completion, entry.CacheRead, 0, time.Since(startTime).Milliseconds(), http.StatusOK, "cache-hit-exact", false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			status, auditMsg, auditRespBody := http.StatusOK, "cache-hit-exact", entry.Body
+			if blockedBody != nil {
+				status, auditMsg, auditRespBody = http.StatusBadRequest, "cache-hit-exact blocked by guardrail", blockedBody
+			}
+			uc.writeAuditLog(ctx, key, entry.ProviderID, realModelName, body, auditRespBody, entry.Prompt, entry.Completion, entry.CacheRead, 0, time.Since(startTime).Milliseconds(), status, auditMsg, false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			if blockedBody != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write(blockedBody)
+				return
+			}
 			writeCachedResponse(w, entry, extractStreamFlag(body), realModelName, "exact")
 			return
 		}
@@ -713,6 +728,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			if uc.metrics != nil {
 				uc.metrics.CacheRequests.WithLabelValues("semantic", "hit").Inc()
 			}
+			// Same re-scan rationale as the exact-cache hit above: a semantic
+			// neighbor may have been indexed under a different key/policy.
+			var blockedBody []byte
+			ctx, semHit, blockedBody = uc.applyCacheHitGuardrail(ctx, key, semHit)
 			var hitPrice int64
 			if freeze != nil && freeze.Account != nil {
 				fullPrice := uc.billing.PriceMicro(ctx, freeze.Account, semHit.ProviderID, realModelName, semHit.Prompt, semHit.Completion, semHit.CacheRead, 0)
@@ -722,7 +741,17 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 			if uc.billing != nil {
 				uc.billing.RecordUsage(tenantID, key.ID, semHit.ProviderID, realModelName, 0, 0, 0, 0, hitPrice, true)
 			}
-			uc.writeAuditLog(ctx, key, semHit.ProviderID, realModelName, body, semHit.Body, semHit.Prompt, semHit.Completion, semHit.CacheRead, 0, time.Since(startTime).Milliseconds(), http.StatusOK, fmt.Sprintf("cache-hit-semantic sim=%.4f", similarity), false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			status, auditMsg, auditRespBody := http.StatusOK, fmt.Sprintf("cache-hit-semantic sim=%.4f", similarity), semHit.Body
+			if blockedBody != nil {
+				status, auditMsg, auditRespBody = http.StatusBadRequest, fmt.Sprintf("cache-hit-semantic sim=%.4f blocked by guardrail", similarity), blockedBody
+			}
+			uc.writeAuditLog(ctx, key, semHit.ProviderID, realModelName, body, auditRespBody, semHit.Prompt, semHit.Completion, semHit.CacheRead, 0, time.Since(startTime).Milliseconds(), status, auditMsg, false, ClientIPFromRequest(r), "openai", float64(hitPrice)/model.MicroCreditScale, 0, "", requestedModel)
+			if blockedBody != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write(blockedBody)
+				return
+			}
 			writeCachedResponse(w, semHit, extractStreamFlag(body), realModelName, "semantic")
 			return
 		}
@@ -920,6 +949,11 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 
 	var respBody []byte
 	var streamErr string
+	// outboundBlocked tracks whether applyOutboundGuardrail rejected this
+	// (non-streaming) response — used below to keep a blocked reply out of
+	// the exact/semantic response cache. Streaming responses are never
+	// cached regardless, so this is left false there.
+	var outboundBlocked bool
 	promptTokens, completionTokens, cachedTokens, cacheCreationTokens := 0, 0, 0, 0
 	respIsStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 
@@ -967,13 +1001,12 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				w.Write([]byte(`{"error":{"message":"upstream response translation failed"}}`))
 				respBody = raw
 			} else {
-				var blocked bool
-				ctx, translated, blocked = uc.applyOutboundGuardrail(ctx, key, translated)
-				if !blocked {
-					ctx, translated, blocked = uc.runPostResponseHook(ctx, tenantID, translated)
+				ctx, translated, outboundBlocked = uc.applyOutboundGuardrail(ctx, key, translated)
+				if !outboundBlocked {
+					ctx, translated, outboundBlocked = uc.runPostResponseHook(ctx, tenantID, translated)
 				}
 				w.Header().Set("Content-Type", "application/json")
-				if blocked {
+				if outboundBlocked {
 					w.WriteHeader(http.StatusBadRequest)
 				} else {
 					w.WriteHeader(http.StatusOK)
@@ -1012,11 +1045,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		promptTokens, completionTokens, cachedTokens, reasoningTokens = parseUsageFromBody(raw)
 		ctx = withReasoningTokens(ctx, reasoningTokens)
 		finalBody := raw
-		blocked := false
 		if resp.StatusCode < 300 {
-			ctx, finalBody, blocked = uc.applyOutboundGuardrail(ctx, key, raw)
-			if !blocked {
-				ctx, finalBody, blocked = uc.runPostResponseHook(ctx, tenantID, finalBody)
+			ctx, finalBody, outboundBlocked = uc.applyOutboundGuardrail(ctx, key, raw)
+			if !outboundBlocked {
+				ctx, finalBody, outboundBlocked = uc.runPostResponseHook(ctx, tenantID, finalBody)
 			}
 		}
 
@@ -1030,7 +1062,7 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 				w.Header().Add(k, v)
 			}
 		}
-		if blocked {
+		if outboundBlocked {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 		} else {
@@ -1093,8 +1125,10 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 	}
 	uc.writeAuditLog(ctx, key, selectedProvider.provider.ID, realModelName, body, respBody, promptTokens, completionTokens, cachedTokens, cacheCreationTokens, latency, resp.StatusCode, auditErrMsg, false, ClientIPFromRequest(r), auditProtocol, openaiCredits, openaiPrice, openaiUpstreamID, requestedModel)
 
-	// 精确缓存写入（仅缓存非流式成功响应；流式响应不重构存储）
-	if cacheEnabled && cacheDigest != "" && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
+	// 精确缓存写入（仅缓存非流式成功响应；流式响应不重构存储；被出站护栏拦截的
+	// 响应绝不写入缓存——respBody 此时是护栏的拦截提示 JSON，而非真实回复，一旦
+	// 缓存会被后续命中当作正常 200 回复重放给别的请求）
+	if cacheEnabled && cacheDigest != "" && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" && !outboundBlocked {
 		cacheStore(uc.rdb, cacheDigest, &cachedResponse{
 			Body:       respBody,
 			Prompt:     promptTokens,
@@ -1106,8 +1140,9 @@ func (uc *GatewayUseCase) ProxyRequest(ctx context.Context, key *model.AIVirtual
 		}, cacheCfg.TTLSec)
 	}
 
-	// 语义缓存写入：复用查找阶段已计算的向量，避免二次调用嵌入模型。
-	if semanticState != nil && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" {
+	// 语义缓存写入：复用查找阶段已计算的向量，避免二次调用嵌入模型；同样跳过被
+	// 出站护栏拦截的响应（理由同精确缓存）。
+	if semanticState != nil && !respIsStream && resp.StatusCode == http.StatusOK && streamErr == "" && !outboundBlocked {
 		uc.semanticCacheStore(ctx, semanticState, &cachedResponse{
 			Body:       respBody,
 			Prompt:     promptTokens,
@@ -1445,14 +1480,23 @@ func (uc *GatewayUseCase) resolveTargetModel(ctx context.Context, key *model.AIV
 		}
 		return realName, mapping.RealModel.ProviderID, true, nil
 	}
+	// A client explicitly naming a model outside the key's allow-list (or the
+	// provider's enabled model pool below) is a policy violation and must be
+	// rejected — silently substituting a different, unrequested model here
+	// used to mean the caller's actual traffic (and billing) went to a model
+	// it never asked for, with only a Warn log as any trace. Omitting "model"
+	// entirely is different: some callers rely on the key resolving to a
+	// sensible default, so that case still picks one instead of erroring.
 	if len(allowed) > 0 {
 		if requestedModel != "" && containsString(allowed, requestedModel) {
 			return requestedModel, key.ProviderID, false, nil
 		}
-		picked := allowed[mrand.IntN(len(allowed))]
-		uc.logger.Warnf("请求模型不在该 Key 的允许列表，按白名单随机分发 keyID=%d requestedModel=%s picked=%s",
-			key.ID, requestedModel, picked)
-		return picked, key.ProviderID, false, nil
+		if requestedModel == "" {
+			picked := allowed[mrand.IntN(len(allowed))]
+			uc.logger.Infof("请求未指定模型，按 Key 允许模型列表随机选取默认模型 keyID=%d picked=%s", key.ID, picked)
+			return picked, key.ProviderID, false, nil
+		}
+		return "", 0, false, fmt.Errorf("模型\"%s\"不在该 Key 的允许模型列表中，访问被拒绝", requestedModel)
 	}
 	providerModels, perr := uc.listEnabledProviderModelNames(ctx, key.ProviderID)
 	if perr != nil {
@@ -1462,12 +1506,17 @@ func (uc *GatewayUseCase) resolveTargetModel(ctx context.Context, key *model.AIV
 		return requestedModel, key.ProviderID, false, nil
 	}
 	if len(providerModels) == 0 {
+		// Provider has no enabled models registered at all: nothing to
+		// validate against, so pass the request through unchanged rather than
+		// blocking every call in a not-yet-fully-configured setup.
 		return requestedModel, key.ProviderID, false, nil
 	}
-	picked := providerModels[mrand.IntN(len(providerModels))]
-	uc.logger.Warnf("请求模型不在提供方已启用模型列表，按提供方模型池随机分发 keyID=%d requestedModel=%s picked=%s",
-		key.ID, requestedModel, picked)
-	return picked, key.ProviderID, false, nil
+	if requestedModel == "" {
+		picked := providerModels[mrand.IntN(len(providerModels))]
+		uc.logger.Infof("请求未指定模型，按提供方已启用模型池随机选取默认模型 keyID=%d picked=%s", key.ID, picked)
+		return picked, key.ProviderID, false, nil
+	}
+	return "", 0, false, fmt.Errorf("模型\"%s\"不在该提供方已启用的模型列表中，访问被拒绝", requestedModel)
 }
 
 func (uc *GatewayUseCase) resolveExactTargetModel(ctx context.Context, key *model.AIVirtualKey, requestedModel string) (string, uint, bool, error) {

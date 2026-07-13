@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/opscenter/ai-gateway/internal/conf"
@@ -20,11 +21,26 @@ func proxyTimeout(aiConf *conf.AI) time.Duration {
 	return 300 * time.Second
 }
 
-// newProxyClient constructs an http.Client for proxying upstream LLM requests.
+var (
+	sharedProxyClientOnce sync.Once
+	sharedProxyClient     *http.Client
+)
+
+// newProxyClient returns the process-wide shared http.Client for proxying
+// upstream LLM requests. Every call site used the same 300s header timeout
+// (verified: newProxyClientWithHeaderTimeout is never called with any other
+// value), so a single lazily-built client is safe — and required: an
+// http.Transport owns its own connection pool, so building a fresh
+// *http.Transport per call (the previous behavior) silently defeated
+// MaxIdleConns/MaxIdleConnsPerHost, forcing a new TCP+TLS handshake on every
+// single upstream request regardless of upstream host.
 // Critically: http.Client.Timeout is NOT set — it would cut streaming responses.
 // Only Transport.ResponseHeaderTimeout (TTFB) is set.
 func newProxyClient() *http.Client {
-	return newProxyClientWithHeaderTimeout(300 * time.Second)
+	sharedProxyClientOnce.Do(func() {
+		sharedProxyClient = newProxyClientWithHeaderTimeout(300 * time.Second)
+	})
+	return sharedProxyClient
 }
 
 // newProxyClientWithHeaderTimeout allows customizing the TTFB (response header) timeout.

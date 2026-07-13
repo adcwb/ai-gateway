@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -30,7 +31,7 @@ type RouterManager struct {
 	logger  *log.Helper
 
 	stateCache sync.Map // providerID → breakerCacheEntry
-	candCache  sync.Map // modelName → candidateCacheEntry
+	modelIndex atomic.Pointer[modelIndexEntry]
 }
 
 func NewRouterManager(rdb *redis.Client, db *gorm.DB, metrics *observability.Metrics, logger log.Logger) *RouterManager {
@@ -61,8 +62,11 @@ type breakerCacheEntry struct {
 	expiresAt time.Time
 }
 
-type candidateCacheEntry struct {
-	providers []model.AIProvider
+// modelIndexEntry is a gateway-wide provider→model inverted index, rebuilt
+// with one full table scan (not one scan per distinct requested model — see
+// providersForModel).
+type modelIndexEntry struct {
+	byModel   map[string][]model.AIProvider
 	expiresAt time.Time
 }
 
@@ -106,7 +110,9 @@ return 0
 `)
 
 // reportResultScript feeds one attempt outcome into the state machine.
-// Returns the state after the report ('closed' / 'open' / 'half_open').
+// Returns {prevState, newState} — the caller previously fetched prevState
+// via a separate StateOf Redis round-trip before running this script; folding
+// it into the script's own read of the 'state' field removes that extra hop.
 var reportResultScript = redis.NewScript(`
 local key = KEYS[1]
 local ok = ARGV[1] == '1'
@@ -116,28 +122,29 @@ local threshold = tonumber(ARGV[4])
 local probeSuccesses = tonumber(ARGV[5])
 local state = redis.call('HGET', key, 'state')
 if not state then state = 'closed' end
+local prevState = state
 
 if state == 'half_open' then
     if ok then
         local okCount = tonumber(redis.call('HINCRBY', key, 'probe_ok', 1))
         if okCount >= probeSuccesses then
             redis.call('HSET', key, 'state', 'closed', 'fail_count', 0, 'window_start', now, 'probe_inflight', 0, 'probe_ok', 0)
-            return 'closed'
+            return {prevState, 'closed'}
         end
-        return 'half_open'
+        return {prevState, 'half_open'}
     end
     redis.call('HSET', key, 'state', 'open', 'opened_at', now, 'probe_inflight', 0, 'probe_ok', 0)
-    return 'open'
+    return {prevState, 'open'}
 end
 
 if state == 'open' then
-    return 'open'
+    return {prevState, 'open'}
 end
 
 -- closed
 if ok then
     redis.call('HSET', key, 'fail_count', 0, 'window_start', now)
-    return 'closed'
+    return {prevState, 'closed'}
 end
 local windowStart = tonumber(redis.call('HGET', key, 'window_start') or '0')
 local failCount = tonumber(redis.call('HGET', key, 'fail_count') or '0')
@@ -149,9 +156,9 @@ failCount = failCount + 1
 redis.call('HSET', key, 'fail_count', failCount)
 if failCount >= threshold then
     redis.call('HSET', key, 'state', 'open', 'opened_at', now, 'probe_inflight', 0, 'probe_ok', 0)
-    return 'open'
+    return {prevState, 'open'}
 end
-return 'closed'
+return {prevState, 'closed'}
 `)
 
 // TryPass reports whether an attempt against providerID may proceed now.
@@ -181,17 +188,26 @@ func (rm *RouterManager) ReportResult(ctx context.Context, providerID uint, outc
 	if rm.rdb == nil {
 		return
 	}
-	prev := rm.StateOf(ctx, providerID)
 	ok := "0"
 	if outcome == AttemptSuccess {
 		ok = "1"
 	}
-	newState, err := reportResultScript.Run(ctx, rm.rdb, []string{breakerKey(providerID)},
-		ok, time.Now().Unix(), breakerWindowSec, breakerFailThreshold, breakerProbeSuccesses).Text()
+	// reportResultScript now returns {prevState, newState} in one round trip —
+	// this used to call StateOf first (a separate HMGET) purely to log/compare
+	// against the transition, doubling the Redis hop on every settled attempt.
+	res, err := reportResultScript.Run(ctx, rm.rdb, []string{breakerKey(providerID)},
+		ok, time.Now().Unix(), breakerWindowSec, breakerFailThreshold, breakerProbeSuccesses).Result()
 	if err != nil {
 		rm.logger.Warnf("router: ReportResult 写入失败 providerID=%d err=%v", providerID, err)
 		return
 	}
+	pair, isPair := res.([]interface{})
+	if !isPair || len(pair) != 2 {
+		rm.logger.Warnf("router: ReportResult 返回格式异常 providerID=%d", providerID)
+		return
+	}
+	prev, _ := pair[0].(string)
+	newState, _ := pair[1].(string)
 	rm.cacheState(providerID, newState)
 	if newState != prev {
 		rm.recordTransition(providerID, prev, newState, string(outcome))
@@ -354,13 +370,22 @@ func (rm *RouterManager) Candidates(ctx context.Context, realModel string, prima
 	return out
 }
 
-// providersForModel lists enabled providers offering realModel, briefly cached.
+// providersForModel lists enabled providers offering realModel via the
+// gateway-wide provider→model index (modelIndex), an O(1) map lookup after
+// the index is built/refreshed.
 func (rm *RouterManager) providersForModel(ctx context.Context, realModel string) []model.AIProvider {
-	if v, hit := rm.candCache.Load(realModel); hit {
-		entry := v.(candidateCacheEntry)
-		if time.Now().Before(entry.expiresAt) {
-			return entry.providers
-		}
+	return rm.providerModelIndex(ctx)[realModel]
+}
+
+// providerModelIndex returns the cached provider→model index, rebuilding it
+// with a single full table scan when stale. Previously this scan ran once
+// per distinct requested model name on every cache miss (O(providers×models)
+// each time) even though the underlying provider set is shared across every
+// model — a gateway serving N distinct models paid the same full scan N
+// times per TTL window. One shared index amortizes that to a single scan.
+func (rm *RouterManager) providerModelIndex(ctx context.Context) map[string][]model.AIProvider {
+	if entry := rm.modelIndex.Load(); entry != nil && time.Now().Before(entry.expiresAt) {
+		return entry.byModel
 	}
 	var all []model.AIProvider
 	if rm.db != nil {
@@ -369,21 +394,23 @@ func (rm *RouterManager) providersForModel(ctx context.Context, realModel string
 			return nil
 		}
 	}
-	matched := make([]model.AIProvider, 0, len(all))
+	byModel := make(map[string][]model.AIProvider)
 	for _, p := range all {
 		models, err := p.ParseModels()
 		if err != nil {
 			continue
 		}
+		seen := make(map[string]struct{}, len(models))
 		for _, m := range models {
-			if m.Name == realModel {
-				matched = append(matched, p)
-				break
+			if _, dup := seen[m.Name]; dup {
+				continue // a provider listing the same model twice shouldn't duplicate as a candidate
 			}
+			seen[m.Name] = struct{}{}
+			byModel[m.Name] = append(byModel[m.Name], p)
 		}
 	}
-	rm.candCache.Store(realModel, candidateCacheEntry{providers: matched, expiresAt: time.Now().Add(candidateCacheTTL)})
-	return matched
+	rm.modelIndex.Store(&modelIndexEntry{byModel: byModel, expiresAt: time.Now().Add(candidateCacheTTL)})
+	return byModel
 }
 
 // -----------------------------------------------------------------------------
